@@ -64,6 +64,10 @@ buildCli(SERVER_NAME, {
     logout: async () => {
       await runLogout()
       return 0
+    },
+    relay: async () => {
+      console.error('relay was removed; run `email auth` (see README)')
+      return 2
     }
   }
 })(process.argv.slice(2)).then((code) => process.exit(code))

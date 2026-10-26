@@ -67,6 +67,17 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     expect(process.exit).toHaveBeenCalledWith(0)
   })
 
+  it('refuses the removed "relay" subcommand with exit 2 and a pointer to auth', async () => {
+    process.argv.push('relay')
+
+    await import('./start-server.js')
+    await vi.waitFor(() => expect(process.exit).toHaveBeenCalledWith(2))
+
+    expect(console.error).toHaveBeenCalledWith('relay was removed; run `email auth` (see README)')
+    expect(runAuth).not.toHaveBeenCalled()
+    expect(initServer).not.toHaveBeenCalled()
+  })
+
   it('starts the server and registers SIGINT/SIGTERM when no subcommand is given', async () => {
     vi.mocked(initServer).mockResolvedValue(undefined as any)
 
