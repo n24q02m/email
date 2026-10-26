@@ -3,12 +3,12 @@
 Manage email credential setup and runtime configuration.
 
 ### Description
-This tool allows you to check the status of your email credentials, return the setup URL, reset your configuration, signal completion of external setup, and manage runtime caches. In HTTP mode the credential form is already served at `/authorize` (use `config__open_relay` to open it); in stdio mode credentials come from env vars and there is no setup URL.
+This tool reports the status of your email credentials, explains how to set them up, resets saved configuration, re-checks credential state after external changes, and manages runtime caches. Credentials come from environment variables, the legacy encrypted config (read-only), or saved Outlook OAuth tokens. There is no web credential form; set credentials with env vars or the `email auth outlook <address>` CLI command.
 
 ### Actions
 
 #### 1. status
-Check current credential state.
+Check current credential state and the configured accounts.
 ```json
 {
   "action": "status"
@@ -16,7 +16,7 @@ Check current credential state.
 ```
 
 #### 2. setup_status
-Credential/setup state only -- `state` and `setup_url`, without the `accounts` list `status` also returns. Cross-server parity action (matches wet/mnemo/telegram's `config(action="setup_status")`).
+Credential state only (`state`), without the `accounts` list `status` also returns.
 ```json
 {
   "action": "setup_status"
@@ -24,17 +24,15 @@ Credential/setup state only -- `state` and `setup_url`, without the `accounts` l
 ```
 
 #### 3. setup_start
-Return the current setup URL (the credential form on `/authorize` in HTTP mode). Does not spawn a separate relay session; in stdio mode the URL is `null` (credentials come from env vars).
+Explain how to configure credentials. Returns a `message` and the current `state`. No URL is returned.
 ```json
 {
-  "action": "setup_start",
-  "force": true
+  "action": "setup_start"
 }
 ```
-*   `force`: (Optional) boolean. Accepted for compatibility; the current implementation does not restart a relay session.
 
 #### 4. setup_reset
-Clear all saved credentials and reset to awaiting_setup state.
+Delete the saved config and reset to the `awaiting_setup` state.
 ```json
 {
   "action": "setup_reset"
@@ -42,7 +40,7 @@ Clear all saved credentials and reset to awaiting_setup state.
 ```
 
 #### 5. setup_complete
-Re-check credential state after external config changes (e.g. relay submission).
+Re-check credential state after external config changes (for example after editing env vars or running `email auth outlook`). Returns `previous_state`, `state`, and the `accounts` list.
 ```json
 {
   "action": "setup_complete"

@@ -1,9 +1,9 @@
 # CLAUDE.md - email
 
-Ten repo/npm/image: `n24q02m/email` / `@n24q02m/email` / `n24q02m/email` (truoc day la `better-email-mcp`). CON GIU ten cu co chu dich: registry id `io.github.n24q02m/better-email-mcp`, bin alias `better-email-mcp`, data dir `~/.better-email-mcp` (PerPluginStore slug `better-email` + Outlook `tokens.json`), config namespace `better-email-mcp` (config.enc `servers[...]`, stableSub HMAC, JWT issuer/key cua `runHttpServer`), skret path `/better-email-mcp/prod`. Doi cac ten nay can option base-dir o mcp-core (G3).
+Ten repo/npm/image: `n24q02m/email` / `@n24q02m/email` / `n24q02m/email` (truoc day la `better-email-mcp`). CON GIU ten cu co chu dich: registry id `io.github.n24q02m/better-email-mcp`, bin alias `better-email-mcp`, data dir `~/.better-email-mcp` (PerPluginStore slug `better-email` + Outlook `tokens.json`), config namespace `better-email-mcp` (legacy `config.enc` doc qua hull `resolveConfig`), skret path `/better-email-mcp/prod`.
 
 MCP Server cho Email (IMAP/SMTP). TypeScript, Node.js >= 24, bun, ESM.
-4 composite tools, 22 actions (messages, folders, attachments, config; outbound new/reply/forward under messages) plus config__open_relay + help. Multi-account, App Passwords, auto-discovery.
+4 composite tools (messages, folders, attachments, config; outbound new/reply/forward under messages) plus help. Multi-account, App Passwords, auto-discovery.
 
 ## Commands
 
@@ -44,16 +44,11 @@ mise run fix       # bun run check:fix
 ```
 src/
   init-server.ts                 # Entry point, env validation
-  relay-setup.ts                 # formatCredentials() helper (relay form fields -> EMAIL_CREDENTIALS string)
-  relay-schema.ts                # Relay form schema (email credential fields)
   credential-state.ts            # Single-user / stdio credential resolution from env
-  auth/                          # Per-user credential store + Outlook OAuth (HTTP mode)
-    in-memory-cred-store.ts      # Local per-user store fallback; ephemeral, keyed by JWT sub
-    cred-store.ts                # KV write-through store (cf-kv backend, only set by the removed CF deploy; dead-code candidate), keyed by JWT sub
+  auth/                          # Outlook device-code OAuth (`email auth outlook <address>`)
     outlook-device-code.ts       # Microsoft device-code OAuth flow
-    subject-context.ts           # Per-request JWT-sub scope (AsyncLocalStorage)
   transports/
-    http.ts                      # Multi-user HTTP transport with OAuth 2.1
+    http.ts                      # Single-user HTTP transport: hull runHttpServer + bearer token hash (EMAIL_MCP_TOKEN_HASH)
   docs/                          # Markdown docs phuc vu qua MCP resources
   tools/
     registry.ts                  # Tool registration + routing
@@ -68,7 +63,7 @@ src/
   - Custom IMAP host: `user@custom.com:password:imap.custom.com`
   - Custom IMAP host + port: `user@custom.com:password:imap.custom.com:1993`
   - Local IMAP proxy: `user@custom.com:password:localhost:1993` (`localhost` accepted as host; per-account port)
-- **http mode** (opt-in via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`): `PUBLIC_URL` (for relay/OAuth redirect URLs). Self-host qua `docker-compose.http.yml` (`MCP_STORAGE_BACKEND=local`, volume `/data`, publish loopback `127.0.0.1:8082`). Nhanh `MCP_STORAGE_BACKEND=cf-kv` (`auth/cred-store.ts`) chi duoc set boi CF deploy da go, nay la dead-code candidate; local HTTP dung process-local store (`auth/in-memory-cred-store.ts`). `MCP_AUTH_DISABLE=1` skips Bearer JWT verification (for deploys behind an external auth gateway).
+- **http mode** (opt-in via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`): bearer token from `EMAIL_MCP_TOKEN_HASH` (scrypt hash; mint with `printf '%s' "$TOKEN" | email token hash`, token read from stdin, never argv). Required when bound to a non-loopback host; `{mode:'no-auth'}` only on loopback. Self-host qua `docker-compose.http.yml` (volume `/data`, publish loopback `127.0.0.1:8082`). Creds: `EMAIL_CREDENTIALS` env; Outlook tokens `~/.better-email-mcp/tokens.json`.
 - `PORT` (default `0` = OS-assigned random port), `HOST` (optional bind address)
 - `OUTLOOK_CLIENT_ID` -- tu chon, cho self-hosted OAuth2 client. CLI `auth --client-id=<id>` override env var (flag thang env, xem `auth-cli.ts:parseArgs`)
 - `OUTLOOK_TENANT` -- tu chon, tenant cho CA device-code LAN token refresh (`oauth2.ts:getOutlookTenant`). Default `consumers` (stdio/CLI) va `common` (http delegated, `auth/outlook-device-code.ts`). Work/school (Entra ID) can `common` hoac tenant GUID -- refresh token cua work/school danh vao `/consumers` se loi `AADSTS7000012`
@@ -104,36 +99,17 @@ PSR v10 (workflow_dispatch) -> npm + Docker (amd64+arm64) + GHCR + MCP Registry.
 Two transports, selected in `init-server.ts:52-53`. There is no `MCP_MODE` env var; the old `remote-relay` / `local-relay` distinction was removed (see `transports/http.ts:5`).
 
 - **stdio (default)**: MCP SDK `StdioServerTransport` directly. Reads credentials from `EMAIL_CREDENTIALS` OR `EMAIL_USER` + `EMAIL_APP_PASSWORD`. Outlook accounts use an App Password in this mode.
-- **http (opt-in, self-hosted)**: enabled via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`. Single multi-user relay: `/authorize` form for App-Password providers (paste `email:app-password`) plus bundled Outlook device-code OAuth. Per-user credentials are keyed by JWT `sub`; the Outlook token file is `~/.better-email-mcp/tokens.json`. The project no longer operates a public n24q02m HTTP deployment.
+- **http (opt-in, self-hosted)**: enabled via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`. Single user: one shared bearer token (`EMAIL_MCP_TOKEN_HASH`, hull `runHttpServer` auth mode `token`). Accounts come from `EMAIL_CREDENTIALS` or `email auth outlook <address>`; there is no relay form and no per-user store. The project no longer operates a public n24q02m HTTP deployment.
 
 ## Known bugs (phat hien 2026-04-18 E2E)
 
-1. **(Obsolete)** Outlook Device Code "2 tab" duplicate auth — chỉ affect `local-relay` mode, đã bị gỡ cùng với `MCP_MODE` (xem mục Modes). HTTP mode hiện dùng mcp-core delegated device_code, không duplicate.
+1. **Config storage path**: legacy `config.enc` from earlier releases lives in the platformdirs `mcp` config dir (`$APPDATA\mcp\Config\config.enc` on Windows). It is read through hull `resolveConfig` only; this server does not write it. When debugging, clear that path and `~/.better-email-mcp/tokens.json` to reset state.
 
-2. **(Obsolete)** Browser UI stuck "Waiting for server..." — chỉ affect `MCP_MODE=local-relay` (ECDH `relay/client.ts:sendMessage('complete')` paste-form flow), đã bị gỡ. Không còn relay-client path nào live trong HTTP mode.
+2. **Outlook token identity**: resolved in the current source. `saveOutlookTokens` resolves the key in this order: token `email`, `OUTLOOK_EMAIL`, token `sub`, decoded `id_token` subject, then the deterministic `outlook-device-code` fallback. `oauth2.test.ts` covers each branch. Keep `OUTLOOK_EMAIL` as an explicit workaround only when the provider response has no usable identity claim; do not treat the old "long-term fix" note as open work.
 
-3. **Config storage path**: stdio/single-user config ghi qua mcp-core `config-file.js` -> `config.enc` tại platformdirs `mcp` config dir (`$APPDATA\mcp\Config\config.enc` trên Windows; khac Python servers `$LOCALAPPDATA\mcp\config.enc`). Khi debug/test, clean ca 2 paths + `~/.better-email-mcp/tokens.json` de reset state.
+## Tests
 
-4. **Outlook token identity**: resolved in the current source. `saveOutlookTokens` resolves the key in this order: token `email`, `OUTLOOK_EMAIL`, token `sub`, decoded `id_token` subject, then the deterministic `outlook-device-code` fallback. `oauth2.test.ts` covers each branch. Keep `OUTLOOK_EMAIL` as an explicit workaround only when the provider response has no usable identity claim; do not treat the old "long-term fix" note as open work.
+- Unit and integration: `bun run test` (vitest). The full suite runs in GitHub Actions.
+- Live protocol checks: `tests/live/` (manual; needs real provider credentials).
 
-## E2E
-
-Driven by `mcp-core/scripts/e2e/` (matrix-locked, 15 configs). Run a single config from this repo via `make e2e` (proxy) or directly:
-
-```
-cd ../mcp-core && uv run --project scripts/e2e python -m e2e.driver <config-id>
-```
-
-Configs for this repo: `email-gmail`, `email-outlook`.
-
-``email-outlook`` is t2-interaction (Microsoft device-code, 900s timeout); user clicks ``microsoft.com/devicelogin``.
-
-Tier policy:
-
-- **T0** (precommit + CI on PR / main push) - runs without upstream identity. Skret keys not required.
-- **T2 non-interaction** (`make e2e-config CONFIG=<id>` locally) - driver pre-fills relay form from skret AWS SSM `/better-email-mcp/prod` (`ap-southeast-1`). No user gate.
-- **T2 interaction** - driver fills relay form, then prints upstream user-gate URL; user signs in / types OTP at provider. Driver enforces per-flow timeouts (device-code 900s, oauth-redirect 300s, browser-form 600s) and emits `[poll] elapsed=Xs remaining=Ys status=<body>` every 30s. On timeout, container logs + last `setup-status` are saved to `<tmp>/e2e-diag/` BEFORE teardown for post-mortem.
-
-Multi-user remote mode (deployment property; not a separate config) keys per-user credentials by JWT `sub`. Self-hosted HTTP deployments (`docker-compose.http.yml`) use the local store on the `/data` volume; the in-memory fallback (`auth/in-memory-cred-store.ts`) requires re-authentication after restart. The Cloudflare Workers hosting surface was removed; the `cf-kv` store branch (`auth/cred-store.ts`) is a dead-code candidate.
-
-References: `mcp-core/scripts/e2e/matrix.yaml`, `~/.claude/skills/mcp-dev/references/e2e-full-matrix.md` (harness-readiness gate), `~/.claude/skills/mcp-dev/references/secrets-skret.md` (per-server credential layout), `~/.claude/skills/mcp-dev/references/multi-user-pattern.md` (per-JWT-sub isolation).
+The mcp-core e2e matrix and relay-form drivers were removed with the relay; this repo has no T2 relay-form configs.

@@ -8,11 +8,14 @@
  *
  * Runtime config actions:
  *   set, cache_clear
+ *
+ * Credentials are supplied through env vars (EMAIL_CREDENTIALS, or
+ * EMAIL_USER + EMAIL_APP_PASSWORD) or the `email auth` CLI. This tool does not
+ * open a browser form.
  */
 
-import { currentSub } from '../../auth/subject-context.js'
 import type { CredentialState } from '../../credential-state.js'
-import { getSetupUrl, getState, resetState, resolveCredentialState } from '../../credential-state.js'
+import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
 import type { AccountConfig } from '../helpers/config.js'
 import { createUnknownActionError, withErrorHandling } from '../helpers/errors.js'
 import { clearSentFolderCache } from '../helpers/imap-client.js'
@@ -21,33 +24,25 @@ import { clearArchiveFolderCache } from './messages.js'
 
 export interface ConfigInput {
   action: 'status' | 'setup_status' | 'setup_start' | 'setup_reset' | 'setup_complete' | 'set' | 'cache_clear'
-  force?: boolean
   key?: string
   value?: string
-}
-
-export interface ConfigHandlerOptions {
-  /** Clear the durable credential blob for the current JWT subject. */
-  clearSubjectCredentials?: (sub: string) => Promise<void>
 }
 
 interface ConfigStatusResult {
   action: 'status'
   state: CredentialState
-  setup_url: string | null
   accounts: string[]
 }
 
 interface ConfigSetupStatusResult {
   action: 'setup_status'
   state: CredentialState
-  setup_url: string | null
 }
 
 interface ConfigSetupStartResult {
   action: 'setup_start'
   state: CredentialState
-  setup_url: string | null
+  message: string
 }
 
 interface ConfigSetupResetResult {
@@ -87,24 +82,20 @@ type ConfigResult =
 /**
  * Unified config tool - credential lifecycle + runtime settings
  */
-export async function handleConfig(
-  accounts: AccountConfig[],
-  input: ConfigInput,
-  options: ConfigHandlerOptions = {}
-): Promise<ConfigResult> {
+export async function handleConfig(accounts: AccountConfig[], input: ConfigInput): Promise<ConfigResult> {
   return withErrorHandling(async () => {
     switch (input.action) {
       case 'status':
         return handleStatus(accounts)
 
       case 'setup_status':
-        return handleSetupStatus(accounts)
+        return handleSetupStatus()
 
       case 'setup_start':
-        return await handleSetupStart(input)
+        return handleSetupStart()
 
       case 'setup_reset':
-        return await handleSetupReset(options)
+        return await handleSetupReset()
 
       case 'setup_complete':
         return await handleSetupComplete(accounts)
@@ -124,68 +115,36 @@ export async function handleConfig(
   })()
 }
 
-// Per-subject credential state (multi-user / Cloudflare). When the request
-// carries a JWT `sub` scope, the process-wide single-user `getState()`
-// lifecycle is meaningless: a per-sub container may only ever READ blobs from
-// KV and never run the single-user save that flips getState() to
-// 'configured', so it would forever report 'awaiting_setup' even though the
-// caller's accounts resolved (the `folders`/`messages` tools work). Derive the
-// state from whether THIS subject's accounts resolved instead. Single-user
-// (no sub: stdio / auth-disabled gateway) keeps the global credential-state
-// machine, which also distinguishes 'setup_in_progress' (Outlook device-code
-// pending). Shared by `status` and `setup_status` so both stay consistent.
-function resolveConfigState(accounts: AccountConfig[]): CredentialState {
-  const sub = currentSub()
-  return sub ? (accounts.length > 0 ? 'configured' : 'awaiting_setup') : getState()
-}
-
 function handleStatus(accounts: AccountConfig[]): ConfigStatusResult {
   return {
     action: 'status',
-    state: resolveConfigState(accounts),
-    setup_url: getSetupUrl(),
+    state: getState(),
     accounts: accounts.map((a) => a.email)
   }
 }
 
-// Credential/setup-only view of `status` (no `accounts` list), for
-// cross-server tool-surface parity with wet/mnemo/telegram's
-// `config(action="setup_status")`. `status` keeps returning `accounts` too
-// (backward compatible; unchanged behavior).
-function handleSetupStatus(accounts: AccountConfig[]): ConfigSetupStatusResult {
+function handleSetupStatus(): ConfigSetupStatusResult {
   return {
     action: 'setup_status',
-    state: resolveConfigState(accounts),
-    setup_url: getSetupUrl()
+    state: getState()
   }
 }
 
-async function handleSetupStart(_input: ConfigInput): Promise<ConfigSetupStartResult> {
-  // Per spec 2026-05-01-stdio-pure-http-multiuser.md §5.2.1, the legacy
-  // triggerRelaySetup spawn was deleted. In HTTP mode the relay form is
-  // already running on /authorize (the same process serves it); use
-  // `config__open_relay` to open it. In stdio mode there is no setup URL —
-  // credentials come from env vars validated up front in init-server.
+function handleSetupStart(): ConfigSetupStartResult {
   return {
     action: 'setup_start',
     state: getState(),
-    setup_url: getSetupUrl()
+    message:
+      'Set EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD) and restart the server, or run `email auth outlook <address>` from the CLI.'
   }
 }
 
-async function handleSetupReset(options: ConfigHandlerOptions): Promise<ConfigSetupResetResult> {
-  const sub = currentSub()
-  if (sub) {
-    if (!options.clearSubjectCredentials) {
-      throw new Error('Subject credential reset is not configured for HTTP mode.')
-    }
-    await options.clearSubjectCredentials(sub)
-  }
+async function handleSetupReset(): Promise<ConfigSetupResetResult> {
   await resetState()
   return {
     action: 'setup_reset',
-    state: sub ? 'awaiting_setup' : getState(),
-    message: 'Credential state reset to awaiting_setup. Config file deleted.'
+    state: getState(),
+    message: 'Credential state reset to awaiting_setup. Stored config deleted.'
   }
 }
 

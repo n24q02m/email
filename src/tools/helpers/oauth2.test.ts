@@ -1,8 +1,8 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
-import { tryOpenBrowser } from '@n24q02m/mcp-core'
+import { tryOpenBrowser } from '@n24q02m/hull'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-vi.mock('@n24q02m/mcp-core', () => ({
+vi.mock('@n24q02m/hull', () => ({
   tryOpenBrowser: vi.fn().mockResolvedValue(true)
 }))
 
@@ -23,12 +23,11 @@ vi.mock('node:os', () => ({
 
 const mockTryOpenBrowser = vi.mocked(tryOpenBrowser)
 vi.mock('../../credential-state.js', () => ({
-  setState: vi.fn(),
-  getMarkSetupComplete: vi.fn()
+  setState: vi.fn()
 }))
 
 import { readFile } from 'node:fs/promises'
-import { getMarkSetupComplete, setState } from '../../credential-state.js'
+import { setState } from '../../credential-state.js'
 
 const mockReadFile = vi.mocked(readFile)
 const mockExistsSync = vi.mocked(existsSync)
@@ -40,12 +39,9 @@ beforeEach(() => {
   vi.clearAllMocks()
 })
 
-import { InMemoryCredStore } from '../../auth/in-memory-cred-store.js'
-import { subjectContext } from '../../auth/subject-context.js'
 import type { OAuth2Tokens } from './oauth2.js'
 import {
   _getPendingAuths,
-  _resetBrowserOpenDedupe,
   _resetTokenCache,
   decodeIdTokenSubject,
   deleteStoredTokens,
@@ -62,8 +58,7 @@ import {
   loadStoredTokens,
   refreshAccessToken,
   saveOutlookTokens,
-  saveTokens,
-  setOutlookTokenStore
+  saveTokens
 } from './oauth2.js'
 
 // ============================================================================
@@ -72,7 +67,6 @@ import {
 
 afterEach(() => {
   _resetTokenCache()
-  _resetBrowserOpenDedupe()
 })
 
 describe('isOutlookDomain', () => {
@@ -186,17 +180,6 @@ describe('loadStoredTokens', () => {
     mockReadFile.mockRejectedValue({ code: 'EACCES' })
 
     expect(await loadStoredTokens('user@outlook.com')).toBeNull()
-  })
-  it('returns null when the embedded token store fails to load', async () => {
-    const store = new InMemoryCredStore()
-    vi.spyOn(store, 'load').mockRejectedValue(new Error('KV unavailable'))
-    setOutlookTokenStore(store)
-
-    try {
-      expect(await loadStoredTokens('user@outlook.com', 'broken-sub')).toBeNull()
-    } finally {
-      setOutlookTokenStore(null)
-    }
   })
   it('throws if email is missing', async () => {
     await expect(loadStoredTokens(null as any)).rejects.toThrow('Email is required')
@@ -470,28 +453,17 @@ describe('ensureValidToken', () => {
   })
 
   it('does not start interactive auth for a default token check', async () => {
-    const store = new InMemoryCredStore()
-    const loadSpy = vi.spyOn(store, 'load')
-    const saveSpy = vi.spyOn(store, 'save')
-    setOutlookTokenStore(store)
+    mockReadFile.mockRejectedValue({ code: 'ENOENT' })
     _getPendingAuths().clear()
 
     const account = { email: 'read-only@outlook.com' } as { email: string; oauth2?: OAuth2Tokens }
 
-    try {
-      await expect(
-        subjectContext.run({ sub: 'read-only-sub', accounts: [] }, () => ensureValidToken(account))
-      ).rejects.toMatchObject({ code: 'OAUTH_AUTH_REQUIRED' })
+    await expect(ensureValidToken(account)).rejects.toMatchObject({ code: 'OAUTH_AUTH_REQUIRED' })
 
-      expect(mockFetch).not.toHaveBeenCalled()
-      expect(mockTryOpenBrowser).not.toHaveBeenCalled()
-      expect(_getPendingAuths()).not.toHaveProperty('read-only@outlook.com')
-      expect(loadSpy).toHaveBeenCalledTimes(1)
-      expect(saveSpy).not.toHaveBeenCalled()
-    } finally {
-      setOutlookTokenStore(null)
-      _getPendingAuths().clear()
-    }
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(mockTryOpenBrowser).not.toHaveBeenCalled()
+    expect(_getPendingAuths()).not.toHaveProperty('read-only@outlook.com')
+    expect(mockWriteFileSync).not.toHaveBeenCalled()
   })
 
   it('initiates Device Code flow when no tokens exist', async () => {
@@ -535,7 +507,7 @@ describe('ensureValidToken', () => {
 
     await expect(ensureValidToken(account, { allowInteractive: true })).rejects.toThrow('BROWSER-CODE')
 
-    // Verify mcp-core's tryOpenBrowser was called with the verification URI
+    // Verify tryOpenBrowser (hull) was called with the verification URI
     expect(mockTryOpenBrowser).toHaveBeenCalledTimes(1)
     expect(mockTryOpenBrowser).toHaveBeenCalledWith('https://microsoft.com/devicelogin')
 
@@ -557,12 +529,12 @@ describe('ensureValidToken', () => {
 
     const account = { email: 'nodup@outlook.com' } as { email: string; oauth2?: OAuth2Tokens }
 
-    // First call: opens browser via mcp-core
+    // First call: opens browser via tryOpenBrowser
     await expect(ensureValidToken(account, { allowInteractive: true })).rejects.toThrow('NODUP-CODE')
     expect(mockTryOpenBrowser).toHaveBeenCalledTimes(1)
 
     // Second call: reuses pending auth, oauth2.ts short-circuits before
-    // calling tryOpenBrowser, so mcp-core helper is not invoked again.
+    // calling tryOpenBrowser, so the hull helper is not invoked again.
     mockTryOpenBrowser.mockClear()
     await expect(ensureValidToken(account, { allowInteractive: true })).rejects.toThrow('NODUP-CODE')
     expect(mockTryOpenBrowser).not.toHaveBeenCalled()
@@ -1121,10 +1093,10 @@ describe('refreshAccessToken edge cases', () => {
 })
 
 // ============================================================================
-// Browser open delegation (mcp-core owns URL sanitization + platform exec)
+// Browser open delegation (tryOpenBrowser from @n24q02m/hull owns platform exec)
 // ============================================================================
 
-describe('openBrowser delegates to mcp-core', () => {
+describe('openBrowser delegates to tryOpenBrowser', () => {
   const mockFetch = vi.fn()
 
   beforeEach(() => {
@@ -1135,7 +1107,7 @@ describe('openBrowser delegates to mcp-core', () => {
     vi.unstubAllGlobals()
   })
 
-  it('forwards malicious URLs with shell metacharacters to mcp-core', async () => {
+  it('forwards malicious URLs with shell metacharacters to tryOpenBrowser', async () => {
     mockReadFileSync.mockReturnValue('{}')
 
     const maliciousUri = 'https://microsoft.com/devicelogin?code=ABCD;echo"vulnerable"'
@@ -1153,7 +1125,7 @@ describe('openBrowser delegates to mcp-core', () => {
 
     await expect(ensureValidToken(account, { allowInteractive: true })).rejects.toThrow('SEC-CODE')
 
-    // mcp-core's tryOpenBrowser is responsible for URL canonicalisation and
+    // tryOpenBrowser (hull) is responsible for URL canonicalisation and
     // shell-injection protection (it uses execFile with argument arrays).
     // This test ensures oauth2.ts forwards the raw URL without tampering.
     expect(mockTryOpenBrowser).toHaveBeenCalledWith(maliciousUri)
@@ -1161,7 +1133,7 @@ describe('openBrowser delegates to mcp-core', () => {
     _getPendingAuths().clear()
   })
 
-  it('intercepts non-http/https protocols before delegating to mcp-core', async () => {
+  it('intercepts non-http/https protocols before delegating to tryOpenBrowser', async () => {
     mockReadFileSync.mockReturnValue('{}')
 
     mockFetch.mockResolvedValueOnce({
@@ -1178,14 +1150,14 @@ describe('openBrowser delegates to mcp-core', () => {
 
     await expect(ensureValidToken(account, { allowInteractive: true })).rejects.toThrow('PROTO-CODE')
 
-    // oauth2.ts now filters protocols via isSafeUrl before delegating to mcp-core.tryOpenBrowser.
+    // oauth2.ts now filters protocols via isSafeUrl before delegating to tryOpenBrowser.
     // We verify that the call is intercepted and tryOpenBrowser is not called.
     expect(mockTryOpenBrowser).not.toHaveBeenCalled()
 
     _getPendingAuths().clear()
   })
 
-  it('forwards URLs with leading hyphens to mcp-core', async () => {
+  it('forwards URLs with leading hyphens to tryOpenBrowser', async () => {
     mockReadFileSync.mockReturnValue('{}')
 
     const hyphenUri = 'https://-example.com'
@@ -1272,7 +1244,7 @@ describe('initiateOutlookDeviceCode', () => {
     expect(mockFetch).not.toHaveBeenCalled()
   })
 
-  it('invokes onComplete callback when background poll succeeds', async () => {
+  it('saves tokens and marks configured when background poll succeeds', async () => {
     mockFetch.mockResolvedValueOnce({
       json: async () => ({
         device_code: 'dc-cb',
@@ -1290,43 +1262,11 @@ describe('initiateOutlookDeviceCode', () => {
       })
     })
 
-    const onComplete = vi.fn()
-    await initiateOutlookDeviceCode('cb@outlook.com', onComplete)
+    await initiateOutlookDeviceCode('cb@outlook.com')
 
-    // Allow background poll to run and fire the callback.
-    await vi.waitFor(() => expect(onComplete).toHaveBeenCalled())
-
-    expect(onComplete).toHaveBeenCalled()
-    // Tokens persisted to disk.
-    expect(mockWriteFileSync).toHaveBeenCalled()
-  })
-
-  it('does not throw if onComplete callback fails', async () => {
-    mockFetch.mockResolvedValueOnce({
-      json: async () => ({
-        device_code: 'dc-cb-fail',
-        user_code: 'CB-FAIL',
-        verification_uri: 'https://microsoft.com/devicelogin',
-        expires_in: 900,
-        interval: 0.01
-      })
-    })
-    mockFetch.mockResolvedValueOnce({
-      json: async () => ({
-        access_token: 'at-ok',
-        refresh_token: 'rt-ok',
-        expires_in: 3600
-      })
-    })
-
-    const onComplete = vi.fn().mockImplementation(() => {
-      throw new Error('callback failed')
-    })
-    await initiateOutlookDeviceCode('fail-cb@outlook.com', onComplete)
-
-    await vi.waitFor(() => expect(onComplete).toHaveBeenCalled())
-
-    expect(onComplete).toHaveBeenCalled()
+    // Allow background poll to finish and persist tokens.
+    await vi.waitFor(() => expect(mockWriteFileSync).toHaveBeenCalled())
+    expect(setState).toHaveBeenCalledWith('configured')
   })
 
   it('throws descriptive error when Microsoft rejects the device code request', async () => {
@@ -1356,22 +1296,11 @@ describe('initiateOutlookDeviceCode', () => {
 // ============================================================================
 
 describe('saveOutlookTokens', () => {
-  it('triggers setup completion signals after saving tokens', async () => {
-    const markComplete = vi.fn()
-    vi.mocked(getMarkSetupComplete).mockReturnValue(markComplete)
+  it('marks credential state configured after saving tokens', async () => {
     const tokens = { email: 'user@outlook.com', access_token: 'at-123' }
 
     await saveOutlookTokens(tokens)
 
-    expect(setState).toHaveBeenCalledWith('configured')
-    expect(markComplete).toHaveBeenCalledWith('outlook')
-  })
-
-  it('does not throw if completion hook is missing', async () => {
-    vi.mocked(getMarkSetupComplete).mockReturnValue(null)
-    const tokens = { email: 'user@outlook.com' }
-
-    await expect(saveOutlookTokens(tokens)).resolves.not.toThrow()
     expect(setState).toHaveBeenCalledWith('configured')
   })
 
@@ -1486,16 +1415,6 @@ describe('saveOutlookTokens', () => {
     })
   })
 
-  it('does not throw if completion hook throws', async () => {
-    vi.mocked(getMarkSetupComplete).mockReturnValue(() => {
-      throw new Error('completion failed')
-    })
-    const tokens = { email: 'user@outlook.com' }
-
-    await expect(saveOutlookTokens(tokens)).resolves.not.toThrow()
-    expect(setState).toHaveBeenCalledWith('configured')
-  })
-
   it('handles malformed input types by falling back to defaults', async () => {
     const tokens = {
       email: 'user@outlook.com',
@@ -1515,10 +1434,6 @@ describe('saveOutlookTokens', () => {
   })
 })
 
-// ============================================================================
-// Outlook token embed in the per-sub config blob (Cloudflare multi-user)
-// ============================================================================
-
 const TOK = (n: string): OAuth2Tokens => ({
   accessToken: `at-${n}`,
   refreshToken: `rt-${n}`,
@@ -1526,90 +1441,8 @@ const TOK = (n: string): OAuth2Tokens => ({
   clientId: 'cid'
 })
 
-describe('Outlook token embed (per-sub config blob)', () => {
-  afterEach(() => {
-    setOutlookTokenStore(null)
-    _resetTokenCache()
-  })
-
-  it('embeds tokens in the injected per-sub store, keyed by explicit sub (no file write)', async () => {
-    const store = new InMemoryCredStore()
-    setOutlookTokenStore(store)
-
-    await saveTokens('a@outlook.com', TOK('a'), 'sub-1')
-
-    const blob = await store.load('sub-1')
-    if (!blob) throw new Error('expected store.load to return a blob after saveTokens')
-    expect((blob.outlookTokens as Record<string, OAuth2Tokens>)['a@outlook.com']).toEqual(TOK('a'))
-    expect(await loadStoredTokens('a@outlook.com', 'sub-1')).toEqual(TOK('a'))
-    // Embed path must NOT touch the legacy tokens.json file.
-    expect(mockWriteFileSync).not.toHaveBeenCalled()
-  })
-
-  it('isolates tokens per sub (sub-2 cannot read sub-1 tokens)', async () => {
-    const store = new InMemoryCredStore()
-    setOutlookTokenStore(store)
-
-    await saveTokens('a@outlook.com', TOK('a'), 'sub-1')
-
-    expect(await loadStoredTokens('a@outlook.com', 'sub-2')).toBeNull()
-  })
-
-  it('preserves other blob fields on save (load-fresh-merge, no clobber of accounts)', async () => {
-    const store = new InMemoryCredStore()
-    await store.save('sub-1', { accounts: [{ id: 'a', email: 'a@outlook.com' }] })
-    setOutlookTokenStore(store)
-
-    await saveTokens('a@outlook.com', TOK('a'), 'sub-1')
-
-    const blob = await store.load('sub-1')
-    if (!blob) throw new Error('expected store.load to return a blob after saveTokens')
-    expect((blob.accounts as unknown[]).length).toBe(1)
-    expect((blob.outlookTokens as Record<string, OAuth2Tokens>)['a@outlook.com']).toEqual(TOK('a'))
-  })
-
-  it('uses currentSub() when the sub arg is omitted (request scope)', async () => {
-    const store = new InMemoryCredStore()
-    setOutlookTokenStore(store)
-
-    await subjectContext.run({ sub: 'scoped', accounts: [] }, async () => {
-      await saveTokens('a@outlook.com', TOK('a'))
-      expect(await loadStoredTokens('a@outlook.com')).toEqual(TOK('a'))
-    })
-    expect((await store.load('scoped'))?.outlookTokens).toBeDefined()
-  })
-
-  it('normalizes the email key on the embed path', async () => {
-    const store = new InMemoryCredStore()
-    setOutlookTokenStore(store)
-
-    await saveTokens('User@OUTLOOK.com', TOK('a'), 'sub-1')
-
-    expect(await loadStoredTokens('user@outlook.com', 'sub-1')).toEqual(TOK('a'))
-  })
-
-  it('falls back to the file path when no store is injected', async () => {
-    mockExistsSync.mockReturnValue(false)
-
-    await saveTokens('a@outlook.com', TOK('a')) // no store, no scope
-
-    expect(mockWriteFileSync).toHaveBeenCalled()
-  })
-
-  it('loadOutlookEmails returns the embedded token emails for a sub', async () => {
-    const store = new InMemoryCredStore()
-    setOutlookTokenStore(store)
-
-    await saveTokens('a@outlook.com', TOK('a'), 'sub-1')
-    await saveTokens('b@hotmail.com', TOK('b'), 'sub-1')
-
-    expect((await loadOutlookEmails('sub-1')).sort()).toEqual(['a@outlook.com', 'b@hotmail.com'])
-  })
-})
-
 describe('loadOutlookEmails file store', () => {
   it('lists valid email keys from the single-user token file', async () => {
-    setOutlookTokenStore(null)
     mockReadFile.mockResolvedValue(
       JSON.stringify({
         'a@outlook.com': TOK('a'),
@@ -1618,14 +1451,13 @@ describe('loadOutlookEmails file store', () => {
       })
     )
 
-    expect((await loadOutlookEmails(null)).sort()).toEqual(['a@outlook.com', 'b@hotmail.com'])
+    expect((await loadOutlookEmails()).sort()).toEqual(['a@outlook.com', 'b@hotmail.com'])
   })
 
   it('returns an empty list when the single-user token file cannot be read', async () => {
-    setOutlookTokenStore(null)
     mockReadFile.mockRejectedValue({ code: 'EACCES' })
 
-    expect(await loadOutlookEmails(null)).toEqual([])
+    expect(await loadOutlookEmails()).toEqual([])
   })
 })
 

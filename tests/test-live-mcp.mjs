@@ -81,7 +81,7 @@ console.log('--- Meta ---')
 
 const toolsResult = await client.listTools()
 const toolNames = toolsResult.tools.map((t) => t.name).sort()
-const expected = ['attachments', 'config', 'config__open_relay', 'folders', 'help', 'messages']
+const expected = ['attachments', 'config', 'folders', 'help', 'messages']
 
 try {
   if (JSON.stringify(toolNames) === JSON.stringify(expected)) {

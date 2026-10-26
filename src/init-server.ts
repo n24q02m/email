@@ -6,8 +6,7 @@
  *  - stdio (DEFAULT): MCP SDK StdioServerTransport directly. Requires
  *    EMAIL_PROVIDER + EMAIL_USER + EMAIL_APP_PASSWORD env vars.
  *  - http: Opt-in via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`.
- *    Single-mode multi-user relay form (paste email/app-password OR Outlook
- *    OAuth via bundled client_id).
+ *    Single-user Streamable HTTP; bearer auth via EMAIL_MCP_TOKEN_HASH (see transports/http.ts).
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -78,8 +77,7 @@ Options:
      OR
      {"command": "npx", "args": [...], "env": {"EMAIL_USER": "...", "EMAIL_APP_PASSWORD": "..."}}
 
-  2. Switch to HTTP mode (browser-based setup with bundled Outlook OAuth):
-     See https://mcp.n24q02m.com/servers/better-email-mcp/setup/ "Self-Hosting HTTP Mode"
+  2. Switch to HTTP mode (single-user bearer token): set EMAIL_MCP_TOKEN_HASH (mint with: printf '%s' "$TOKEN" | email token hash), or run: email auth outlook <address>
 
 Documentation: https://mcp.n24q02m.com/servers/better-email-mcp/
 `

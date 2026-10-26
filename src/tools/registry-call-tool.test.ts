@@ -10,8 +10,7 @@ vi.mock('./composite/config.js', () => ({ handleConfig: vi.fn() }))
 
 // Mock credential state to return 'configured' so tools execute normally
 vi.mock('../credential-state.js', () => ({
-  getState: vi.fn(() => 'configured'),
-  getSetupUrl: vi.fn(() => null)
+  getState: vi.fn(() => 'configured')
 }))
 
 describe('CallToolRequestSchema handler coverage', () => {
@@ -59,9 +58,7 @@ describe('CallToolRequestSchema handler coverage', () => {
 
     expect(result.isError).toBe(true)
     expect(result.content[0].text).toContain("Unknown tool: message. Did you mean 'messages'?")
-    expect(result.content[0].text).toContain(
-      'Available tools: messages, folders, attachments, config, config__open_relay, help'
-    )
+    expect(result.content[0].text).toContain('Available tools: messages, folders, attachments, config, help')
   })
 
   it('should successfully call a tool and wrap the result', async () => {

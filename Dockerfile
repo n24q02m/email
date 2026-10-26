@@ -53,11 +53,10 @@ FROM base AS stdio
 ENV MCP_TRANSPORT=stdio
 ENTRYPOINT ["node", "/usr/local/lib/node_modules/@n24q02m/email/bin/cli.mjs"]
 
-# http target: HTTP daemon (runLocalServer). Self-hosted deployment.
+# http target: single-user HTTP daemon (startHttp, bearer token via EMAIL_MCP_TOKEN_HASH). Self-hosted deployment.
 FROM base AS http
 ENV MCP_TRANSPORT=http \
     MCP_PORT=8080 \
-    MCP_STORAGE_BACKEND=local \
     HOME=/data
 VOLUME ["/data"]
 EXPOSE 8080

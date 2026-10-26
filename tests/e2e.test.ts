@@ -2,13 +2,12 @@
  * Consolidated E2E Tests for email
  *
  * Spawns the actual MCP server via stdio and communicates using JSON-RPC
- * through the official MCP SDK client. Covers ALL 6 public tools and ALL 22 actions.
+ * through the official MCP SDK client. Covers all 5 public tools.
  *
- * Four setup modes controlled by E2E_SETUP env var:
+ * Three setup modes controlled by E2E_SETUP env var:
  *   - 'env'    (default) : node bin/cli.mjs with EMAIL_CREDENTIALS env var
  *   - 'plugin' :           npx -y @n24q02m/email with EMAIL_CREDENTIALS
- *   - 'relay'  :           node bin/cli.mjs WITHOUT env, relay browser config
- *   - 'http'   :           HTTP server with OAuth 2.1 + DCR + relay credential form
+ *   - 'http'   :           node bin/cli.mjs with TRANSPORT_MODE=http on loopback (no bearer)
  *
  * Protocol + help tests run without credentials.
  * Email operation tests require EMAIL_CREDENTIALS and skip if not set.
@@ -16,15 +15,11 @@
  * Usage:
  *   EMAIL_CREDENTIALS=user@gmail.com:app-pass bun run vitest run tests/e2e.test.ts
  *   E2E_SETUP=plugin EMAIL_CREDENTIALS=... bun run vitest run tests/e2e.test.ts
- *   E2E_SETUP=relay E2E_BROWSER=chrome bun run vitest run tests/e2e.test.ts
- *   E2E_SETUP=http E2E_BROWSER=chrome bun run vitest run tests/e2e.test.ts
+ *   E2E_SETUP=http bun run vitest run tests/e2e.test.ts
  */
 
 import type { ChildProcess } from 'node:child_process'
-import { execFile, execSync } from 'node:child_process'
-import { createHash, randomBytes } from 'node:crypto'
-import type { Server as HttpServer } from 'node:http'
-import { createServer } from 'node:http'
+import { execSync } from 'node:child_process'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
@@ -57,18 +52,17 @@ function pluginCommand(pkg: string): { command: string; args: string[] } {
 // Configuration
 // ---------------------------------------------------------------------------
 
-const E2E_SETUP = (process.env.E2E_SETUP ?? 'env') as 'env' | 'plugin' | 'relay' | 'http'
-const E2E_BROWSER = process.env.E2E_BROWSER ?? 'chrome'
+const E2E_SETUP = (process.env.E2E_SETUP ?? 'env') as 'env' | 'plugin' | 'http'
 const EMAIL_CREDS = process.env.EMAIL_CREDENTIALS ?? ''
 // The stdio entry point requires credentials before it accepts MCP initialize.
 // Keep the default protocol-only E2E deterministic without enabling email tests.
 const OFFLINE_TEST_CREDENTIALS = 'test@gmail.com:fake_password'
-/** Credentials available via env var, relay mode, or http mode (user provides via relay form) */
-const HAS_CREDS = !!EMAIL_CREDS || E2E_SETUP === 'relay' || E2E_SETUP === 'http'
-// Mutable: set from env var initially, updated by probe if relay/saved tokens provide it
+/** Credentials available via env var */
+const HAS_CREDS = !!EMAIL_CREDS
+// Mutable: set from env var initially, updated by probe if saved tokens provide it
 let TEST_ACCOUNT = EMAIL_CREDS.split(',')[0]?.split(':')[0] ?? ''
 
-const EXPECTED_TOOLS = ['messages', 'folders', 'attachments', 'config', 'config__open_relay', 'help'] as const
+const EXPECTED_TOOLS = ['messages', 'folders', 'attachments', 'config', 'help'] as const
 const EXPECTED_HELP_TOPICS = ['messages', 'folders', 'attachments', 'config', 'help'] as const
 const _EMAIL_DEPENDENT_TOOLS = ['messages', 'folders', 'attachments'] as const
 
@@ -111,21 +105,6 @@ function createStdioTransport(): StdioClientTransport {
         },
         stderr: 'pipe'
       })
-
-    case 'relay':
-      // Relay mode: start WITHOUT EMAIL_CREDENTIALS
-      return new StdioClientTransport({
-        command: 'node',
-        args: ['bin/cli.mjs'],
-        env: {
-          PATH: process.env.PATH ?? '',
-          HOME: process.env.HOME ?? process.env.USERPROFILE ?? '',
-          APPDATA: process.env.APPDATA ?? '',
-          NODE_ENV: 'test'
-          // Intentionally NO EMAIL_CREDENTIALS
-        },
-        stderr: 'pipe'
-      })
     default:
       return new StdioClientTransport({
         command: 'node',
@@ -146,229 +125,6 @@ function createStdioTransport(): StdioClientTransport {
 
 const HTTP_E2E_PORT = 18080
 const HTTP_E2E_URL = `http://127.0.0.1:${HTTP_E2E_PORT}`
-const HTTP_E2E_CALLBACK_PORT = 19877
-const HTTP_E2E_REDIRECT_URI = `http://localhost:${HTTP_E2E_CALLBACK_PORT}/callback`
-const HTTP_E2E_DCR_SECRET = 'e2e-http-mode-secret-that-is-at-least-32-bytes-long!!'
-
-// ---------------------------------------------------------------------------
-// PKCE helpers for HTTP mode
-// ---------------------------------------------------------------------------
-
-function generateCodeVerifier(): string {
-  return randomBytes(32).toString('base64url')
-}
-
-function generateCodeChallenge(verifier: string): string {
-  return createHash('sha256').update(verifier).digest('base64url')
-}
-
-// ---------------------------------------------------------------------------
-// HTTP mode: OAuth flow to obtain a bearer token
-// ---------------------------------------------------------------------------
-
-/**
- * Start a local HTTP callback server that captures the authorization code
- * from the OAuth redirect. Returns a promise that resolves with the code.
- */
-function startCallbackServer(): { server: HttpServer; codePromise: Promise<string> } {
-  let resolveCode: (code: string) => void
-  let rejectCode: (err: Error) => void
-  const codePromise = new Promise<string>((resolve, reject) => {
-    resolveCode = resolve
-    rejectCode = reject
-  })
-
-  const server = createServer((req, res) => {
-    const url = new URL(req.url ?? '/', `http://localhost:${HTTP_E2E_CALLBACK_PORT}`)
-    if (url.pathname === '/callback') {
-      const code = url.searchParams.get('code')
-      if (code) {
-        res.writeHead(200, { 'Content-Type': 'text/html' })
-        res.end('<html><body><h1>Authorization successful</h1><p>You can close this tab.</p></body></html>')
-        resolveCode(code)
-      } else {
-        const error = url.searchParams.get('error') ?? 'no code received'
-        res.writeHead(400, { 'Content-Type': 'text/plain' })
-        res.end(`Error: ${error}`)
-        rejectCode(new Error(`OAuth callback error: ${error}`))
-      }
-    } else {
-      res.writeHead(404)
-      res.end('Not found')
-    }
-  })
-
-  server.listen(HTTP_E2E_CALLBACK_PORT)
-  return { server, codePromise }
-}
-
-/**
- * Perform the full OAuth 2.1 + DCR flow against the local HTTP server:
- *   1. DCR register -> client_id / client_secret
- *   2. Build PKCE authorize URL
- *   3. Follow redirect to get relay form URL
- *   4. Open browser for user to enter email credentials
- *   5. Start callback server to capture auth code
- *   6. Exchange code for bearer token
- */
-async function performHttpOAuthFlow(): Promise<{
-  accessToken: string
-  clientId: string
-  clientSecret: string
-}> {
-  // 1. DCR registration
-  const dcrRes = await fetch(`${HTTP_E2E_URL}/register`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      redirect_uris: [HTTP_E2E_REDIRECT_URI],
-      client_name: 'e2e-http-mode-test',
-      grant_types: ['authorization_code', 'refresh_token'],
-      response_types: ['code'],
-      token_endpoint_auth_method: 'client_secret_post'
-    })
-  })
-  if (!dcrRes.ok) throw new Error(`DCR failed: ${dcrRes.status} ${await dcrRes.text()}`)
-  const dcrBody = await dcrRes.json()
-  const clientId = dcrBody.client_id as string
-  const clientSecret = dcrBody.client_secret as string
-
-  // 2. Build PKCE authorize URL
-  const codeVerifier = generateCodeVerifier()
-  const codeChallenge = generateCodeChallenge(codeVerifier)
-  const state = randomBytes(16).toString('hex')
-
-  const authorizeUrl = new URL(`${HTTP_E2E_URL}/authorize`)
-  authorizeUrl.searchParams.set('response_type', 'code')
-  authorizeUrl.searchParams.set('client_id', clientId)
-  authorizeUrl.searchParams.set('redirect_uri', HTTP_E2E_REDIRECT_URI)
-  authorizeUrl.searchParams.set('code_challenge', codeChallenge)
-  authorizeUrl.searchParams.set('code_challenge_method', 'S256')
-  authorizeUrl.searchParams.set('state', state)
-
-  // 3. Follow redirect to get relay form URL
-  const authRes = await fetch(authorizeUrl.toString(), { redirect: 'manual' })
-  const location = authRes.headers.get('location') ?? ''
-
-  // Determine the relay form URL (may be relative or absolute)
-  let relayFormUrl: string
-  if (location.startsWith('http')) {
-    relayFormUrl = location
-  } else if (location) {
-    relayFormUrl = `${HTTP_E2E_URL}${location}`
-  } else {
-    // Some servers render the form inline at /authorize
-    relayFormUrl = authorizeUrl.toString()
-  }
-
-  // 4. Start callback server and open browser for credential entry
-  const { server: callbackServer, codePromise } = startCallbackServer()
-
-  console.error(`\nHTTP mode relay form URL: ${relayFormUrl}`)
-  console.error('Opening browser -- please enter EMAIL_CREDENTIALS in the relay form...\n')
-  openBrowser(relayFormUrl)
-
-  // 5. Wait for auth code from callback
-  let authCode: string
-  try {
-    authCode = await Promise.race([
-      codePromise,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('OAuth callback timeout: no code received within 5 minutes')), 300_000)
-      )
-    ])
-  } finally {
-    callbackServer.close()
-  }
-
-  // 6. Exchange auth code for access token
-  const tokenRes = await fetch(`${HTTP_E2E_URL}/token`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code: authCode,
-      redirect_uri: HTTP_E2E_REDIRECT_URI,
-      client_id: clientId,
-      client_secret: clientSecret,
-      code_verifier: codeVerifier
-    })
-  })
-  if (!tokenRes.ok) throw new Error(`Token exchange failed: ${tokenRes.status} ${await tokenRes.text()}`)
-  const tokenBody = await tokenRes.json()
-  const accessToken = tokenBody.access_token as string
-  if (!accessToken) throw new Error(`No access_token in token response: ${JSON.stringify(tokenBody)}`)
-
-  console.error('HTTP mode: OAuth flow complete, bearer token acquired')
-  return { accessToken, clientId, clientSecret }
-}
-
-/**
- * Open a URL in the browser for manual credential entry safely.
- * Used by relay mode (stdio relay form) and http mode (OAuth relay form).
- */
-function openBrowser(url: string): void {
-  let safeUrl: string
-  try {
-    const parsed = new URL(url)
-    // Security: Only allow web protocols to prevent javascript: or file: attacks
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return
-    }
-    // URL.href canonicalizes the string, neutering leading hyphens or shell metacharacters
-    safeUrl = parsed.href
-  } catch {
-    return
-  }
-
-  // Fire-and-forget — errors are silently ignored since stderr instructions
-  // serve as fallback if the browser fails to open.
-  if (process.platform === 'darwin') {
-    if (E2E_BROWSER === 'chrome') {
-      execFile('open', ['-a', 'Google Chrome', safeUrl], () => {})
-    } else if (E2E_BROWSER === 'firefox') {
-      execFile('open', ['-a', 'Firefox', safeUrl], () => {})
-    } else {
-      execFile('open', [safeUrl], () => {})
-    }
-  } else if (process.platform === 'win32') {
-    // On Windows, use rundll32 to open URLs safely without cmd.exe shell interpretation.
-    // This works regardless of which browser is default.
-    execFile('rundll32', ['url.dll,FileProtocolHandler', safeUrl], () => {})
-  } else {
-    if (E2E_BROWSER === 'chrome') {
-      execFile('google-chrome', [safeUrl], () => {})
-    } else if (E2E_BROWSER === 'firefox') {
-      execFile('firefox', [safeUrl], () => {})
-    } else {
-      execFile('xdg-open', [safeUrl], () => {})
-    }
-  }
-}
-
-/**
- * For relay mode: wait until the server has credentials by polling folders.list.
- * When the "No email accounts configured" error stops appearing, config is ready.
- */
-async function _waitForRelayConfig(client: Client, timeoutMs = 120_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    try {
-      const result = await client.callTool({
-        name: 'folders',
-        arguments: { action: 'list' }
-      })
-      const text = (result.content as Array<{ type: string; text: string }>)[0]?.text ?? ''
-      if (!text.includes('No email accounts configured')) {
-        return // Config is ready
-      }
-    } catch {
-      // Server not ready yet, keep polling
-    }
-    await new Promise((r) => setTimeout(r, 3000))
-  }
-  throw new Error('Relay config timeout: server did not receive credentials within 2 minutes')
-}
 
 // ---------------------------------------------------------------------------
 // Single shared client for the entire test suite
@@ -385,14 +141,14 @@ beforeAll(async () => {
   client = new Client({ name: 'e2e-test', version: '1.0.0' })
 
   if (E2E_SETUP === 'http') {
-    // --- HTTP mode: spawn HTTP server, OAuth flow, StreamableHTTPClientTransport ---
+    // --- HTTP mode: spawn loopback HTTP server, StreamableHTTPClientTransport ---
     const { spawn } = await import('node:child_process')
     httpServerProcess = spawn('node', ['bin/cli.mjs'], {
       env: {
         ...process.env,
         TRANSPORT_MODE: 'http',
-        PUBLIC_URL: HTTP_E2E_URL,
-        DCR_SERVER_SECRET: HTTP_E2E_DCR_SECRET,
+        HOST: '127.0.0.1',
+        EMAIL_MCP_TOKEN_HASH: '',
         PORT: String(HTTP_E2E_PORT),
         NODE_ENV: 'test'
       },
@@ -423,79 +179,18 @@ beforeAll(async () => {
     }
     if (!serverReady) throw new Error('HTTP server did not become healthy within 15s')
 
-    // Perform full OAuth 2.1 + DCR + relay credential flow
-    const { accessToken } = await performHttpOAuthFlow()
-
-    // Create StreamableHTTPClientTransport with bearer token
-    transport = new StreamableHTTPClientTransport(new URL(`${HTTP_E2E_URL}/mcp`), {
-      requestInit: {
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      }
-    })
+    // Loopback server runs with no bearer token (EMAIL_MCP_TOKEN_HASH unset)
+    transport = new StreamableHTTPClientTransport(new URL(`${HTTP_E2E_URL}/mcp`))
 
     await client.connect(transport)
     console.error('HTTP mode: MCP client connected via StreamableHTTPClientTransport')
-  } else if (E2E_SETUP === 'relay') {
-    // --- Relay mode: stdio without EMAIL_CREDENTIALS ---
-    transport = createStdioTransport()
-
-    // transport.stderr is a PassThrough available immediately (before connect)
-    const stderrChunks: string[] = []
-    const stderrStream = (transport as StdioClientTransport).stderr
-    if (stderrStream) {
-      stderrStream.on('data', (chunk: Buffer) => {
-        stderrChunks.push(chunk.toString())
-      })
-    }
-
-    // connect() BLOCKS until ensureConfig() completes (relay setup or degraded mode).
-    // Server prints relay URL BEFORE blocking on pollForResult().
-    // Start connect in background, watch stderr for URL.
-    const connectPromise = client.connect(transport)
-
-    // Wait for relay URL in stderr
-    const urlDeadline = Date.now() + 30_000
-    let relayUrl = ''
-    while (Date.now() < urlDeadline && !relayUrl) {
-      const combined = stderrChunks.join('')
-      const match = combined.match(/(https?:\/\/[^\s]+\/setup\?s=[^\s]+)/)
-      if (match) {
-        relayUrl = match[0]
-        break
-      }
-      // Check for degraded mode or saved tokens (no relay needed)
-      if (
-        combined.includes('Cannot reach relay server') ||
-        combined.includes('No email accounts configured') ||
-        combined.includes('Found saved OAuth2 tokens') ||
-        combined.includes('config loaded from')
-      ) {
-        break
-      }
-      await new Promise((r) => setTimeout(r, 500))
-    }
-
-    if (relayUrl) {
-      console.error(`\nRelay URL found: ${relayUrl}`)
-      console.error('Opening browser -- please enter EMAIL_CREDENTIALS in the relay page...\n')
-      openBrowser(relayUrl)
-
-      // connect() resolves once user submits credentials and server unblocks
-      await connectPromise
-      console.error('Relay config received -- server connected, proceeding with tests')
-    } else {
-      console.error('No relay URL found -- server started in degraded mode (no EMAIL_CREDENTIALS)')
-      await connectPromise
-    }
   } else {
     // --- env / plugin mode: stdio with EMAIL_CREDENTIALS ---
     transport = createStdioTransport()
     await client.connect(transport)
   }
 
-  // Probe: if TEST_ACCOUNT is empty (relay/http/saved tokens), detect from folders.list
+  // Probe: if TEST_ACCOUNT is empty (http/saved tokens), detect from folders.list
   if (!TEST_ACCOUNT && HAS_CREDS) {
     try {
       const probe = await client.callTool({ name: 'folders', arguments: { action: 'list' } })
@@ -509,7 +204,7 @@ beforeAll(async () => {
       // Probe failed -- TEST_ACCOUNT remains empty
     }
   }
-}, 180_000) // 3 min for relay/http mode with manual browser interaction
+}, 180_000) // 3 min budget for spawned server startup
 
 afterAll(async () => {
   // Best-effort cleanup: trash all test emails
@@ -565,7 +260,7 @@ describe('Server initialization', () => {
 // ===========================================================================
 
 describe('tools/list', () => {
-  it('should return exactly the 6 public tools', async () => {
+  it('should return exactly the 5 public tools', async () => {
     const result = await client.listTools()
     const names = result.tools.map((t) => t.name)
     expect(names).toEqual(EXPECTED_TOOLS)
@@ -1254,7 +949,7 @@ describe('error handling', () => {
   })
 
   // No-accounts hint: only meaningful when the server truly has zero accounts.
-  // The server may auto-load credentials from saved OAuth tokens or relay config
+  // The server may auto-load credentials from saved OAuth tokens.
   // even without EMAIL_CREDENTIALS env var. We skip these tests when credentials
   // are set, AND test with a fake account that will never match.
   describe.skipIf(HAS_CREDS)('no-accounts hints', () => {
@@ -1391,8 +1086,8 @@ describe.skipIf(E2E_SETUP === 'http')('HTTP Transport — Local Server', () => {
       env: {
         ...process.env,
         TRANSPORT_MODE: 'http',
-        PUBLIC_URL: HTTP_URL,
-        DCR_SERVER_SECRET: 'e2e-test-secret-that-is-at-least-32-bytes-long!!',
+        HOST: '127.0.0.1',
+        EMAIL_MCP_TOKEN_HASH: '',
         PORT: String(HTTP_PORT),
         NODE_ENV: 'test'
       },
@@ -1424,213 +1119,5 @@ describe.skipIf(E2E_SETUP === 'http')('HTTP Transport — Local Server', () => {
       const body = await res.json()
       expect(body.status).toBe('ok')
     })
-  })
-
-  describe('OAuth discovery', () => {
-    let metadata: any
-
-    beforeAll(async () => {
-      const res = await fetch(`${HTTP_URL}/.well-known/oauth-authorization-server`)
-      expect(res.status).toBe(200)
-      metadata = await res.json()
-    })
-
-    it('should have correct issuer', () => {
-      expect(metadata.issuer).toContain(HTTP_URL)
-    })
-
-    it('should expose authorization_endpoint', () => {
-      expect(metadata.authorization_endpoint).toBe(`${HTTP_URL}/authorize`)
-    })
-
-    it('should expose token_endpoint', () => {
-      expect(metadata.token_endpoint).toBe(`${HTTP_URL}/token`)
-    })
-
-    it('should expose registration_endpoint (DCR)', () => {
-      expect(metadata.registration_endpoint).toBe(`${HTTP_URL}/register`)
-    })
-
-    it('should support authorization_code grant', () => {
-      expect(metadata.grant_types_supported).toContain('authorization_code')
-    })
-
-    it('should support S256 PKCE', () => {
-      expect(metadata.code_challenge_methods_supported).toContain('S256')
-    })
-  })
-
-  describe('DCR registration', () => {
-    it('should register a new client and return client_id', async () => {
-      const res = await fetch(`${HTTP_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          redirect_uris: ['http://localhost:9999/callback'],
-          client_name: 'e2e-http-test-client',
-          grant_types: ['authorization_code', 'refresh_token'],
-          response_types: ['code'],
-          token_endpoint_auth_method: 'client_secret_post'
-        })
-      })
-      expect([200, 201]).toContain(res.status)
-      const body = await res.json()
-      expect(body.client_id).toBeTruthy()
-    }, 30_000)
-
-    it('should produce deterministic client_id for same input', async () => {
-      const payload = {
-        redirect_uris: ['http://localhost:12345/cb'],
-        client_name: 'deterministic-email-e2e',
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
-        token_endpoint_auth_method: 'client_secret_post'
-      }
-
-      const res1 = await fetch(`${HTTP_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      const body1 = await res1.json()
-
-      const res2 = await fetch(`${HTTP_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
-      const body2 = await res2.json()
-
-      expect(body1.client_id).toBe(body2.client_id)
-      expect(body1.client_secret).toBe(body2.client_secret)
-    }, 30_000)
-  })
-
-  describe('Credential relay page', () => {
-    let clientId: string
-
-    beforeAll(async () => {
-      const res = await fetch(`${HTTP_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          redirect_uris: ['http://localhost:8888/callback'],
-          client_name: 'relay-page-e2e',
-          grant_types: ['authorization_code'],
-          response_types: ['code'],
-          token_endpoint_auth_method: 'client_secret_post'
-        })
-      })
-      const body = await res.json()
-      clientId = body.client_id
-    })
-
-    it('GET /auth/relay with valid state should return HTML form', async () => {
-      const authorizeUrl = new URL(`${HTTP_URL}/authorize`)
-      authorizeUrl.searchParams.set('response_type', 'code')
-      authorizeUrl.searchParams.set('client_id', clientId)
-      authorizeUrl.searchParams.set('redirect_uri', 'http://localhost:8888/callback')
-      authorizeUrl.searchParams.set('code_challenge', 'test-challenge')
-      authorizeUrl.searchParams.set('code_challenge_method', 'S256')
-      authorizeUrl.searchParams.set('state', 'test-state-relay')
-
-      const res = await fetch(authorizeUrl.toString(), { redirect: 'manual' })
-      // Should redirect to relay credential form
-      const location = res.headers.get('location') ?? ''
-      if (location.includes('/auth/relay')) {
-        const relayRes = await fetch(location.startsWith('http') ? location : `${HTTP_URL}${location}`)
-        expect(relayRes.status).toBe(200)
-        const html = await relayRes.text()
-        expect(html).toContain('<form')
-      } else {
-        // Some implementations render the form inline
-        expect([200, 302, 303]).toContain(res.status)
-      }
-    }, 30_000)
-
-    it('POST /auth/credentials with invalid state should return 400', async () => {
-      const res = await fetch(`${HTTP_URL}/auth/credentials`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          state: 'nonexistent-state',
-          email: 'test@example.com',
-          password: 'fake-pass'
-        })
-      })
-      expect(res.status).toBeGreaterThanOrEqual(400)
-    }, 30_000)
-  })
-
-  describe('MCP auth enforcement', () => {
-    it('POST /mcp without Bearer should return 401', async () => {
-      const res = await fetch(`${HTTP_URL}/mcp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2025-03-26',
-            capabilities: {},
-            clientInfo: { name: 'test', version: '1.0.0' }
-          }
-        })
-      })
-      expect(res.status).toBe(401)
-    }, 30_000)
-
-    it('POST /mcp with invalid Bearer should return 401', async () => {
-      const res = await fetch(`${HTTP_URL}/mcp`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer invalid-token-e2e'
-        },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: 1,
-          method: 'initialize',
-          params: {
-            protocolVersion: '2025-03-26',
-            capabilities: {},
-            clientInfo: { name: 'test', version: '1.0.0' }
-          }
-        })
-      })
-      expect(res.status).toBe(401)
-    }, 30_000)
-  })
-
-  describe('DCR client identity', () => {
-    it('should use the fixed local-browser client id for local mode', async () => {
-      const base = {
-        client_name: 'isolation-e2e',
-        grant_types: ['authorization_code'],
-        response_types: ['code'],
-        token_endpoint_auth_method: 'client_secret_post'
-      }
-
-      const res1 = await fetch(`${HTTP_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...base, redirect_uris: ['http://localhost:3001/cb'] })
-      })
-      const body1 = await res1.json()
-
-      const res2 = await fetch(`${HTTP_URL}/register`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...base, redirect_uris: ['http://localhost:3002/cb'] })
-      })
-      const body2 = await res2.json()
-
-      expect(body1.client_id).toBeTruthy()
-      expect(body2.client_id).toBeTruthy()
-      expect(body1.client_id).toBe('local-browser')
-      expect(body2.client_id).toBe('local-browser')
-      expect(body1.client_id).toBe(body2.client_id)
-    }, 30_000)
   })
 })

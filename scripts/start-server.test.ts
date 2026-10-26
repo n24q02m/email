@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { PerPluginStore, setHomeDirForTesting } from '@n24q02m/mcp-core/storage'
+import { PerPluginStore, setHomeDirForTesting } from '@n24q02m/hull/storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAuth, runLogout } from '../src/auth-cli.js'
 import { initServer } from '../src/init-server.js'

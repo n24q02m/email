@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { subjectContext } from '../../auth/subject-context.js'
 import type { AccountConfig } from '../helpers/config.js'
+import type { ConfigInput } from './config.js'
 
 // --- Mocks ---
 vi.mock('../../credential-state.js', () => ({
   getState: vi.fn(),
-  getSetupUrl: vi.fn(),
   resetState: vi.fn(),
   resolveCredentialState: vi.fn()
 }))
@@ -22,14 +21,13 @@ vi.mock('../helpers/oauth2.js', () => ({
   _resetTokenCache: vi.fn()
 }))
 
-import { getSetupUrl, getState, resetState, resolveCredentialState } from '../../credential-state.js'
+import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
 import { clearSentFolderCache } from '../helpers/imap-client.js'
 import { _resetTokenCache } from '../helpers/oauth2.js'
 import { handleConfig } from './config.js'
 import { clearArchiveFolderCache } from './messages.js'
 
 const mockGetState = vi.mocked(getState)
-const mockGetSetupUrl = vi.mocked(getSetupUrl)
 const mockResetState = vi.mocked(resetState)
 const mockResolveCredentialState = vi.mocked(resolveCredentialState)
 
@@ -59,81 +57,24 @@ beforeEach(() => {
 describe('config - status', () => {
   it('returns current state with configured accounts', async () => {
     mockGetState.mockReturnValue('configured')
-    mockGetSetupUrl.mockReturnValue(null)
 
     const result = await handleConfig(accounts, { action: 'status' })
 
     expect(result).toEqual({
       action: 'status',
       state: 'configured',
-      setup_url: null,
-      accounts: ['user1@gmail.com', 'user2@outlook.com']
-    })
-  })
-
-  it('returns setup URL when in setup_in_progress state', async () => {
-    mockGetState.mockReturnValue('setup_in_progress')
-    mockGetSetupUrl.mockReturnValue('https://relay.example.com/setup/abc123')
-
-    const result = await handleConfig(accounts, { action: 'status' })
-
-    expect(result).toEqual({
-      action: 'status',
-      state: 'setup_in_progress',
-      setup_url: 'https://relay.example.com/setup/abc123',
       accounts: ['user1@gmail.com', 'user2@outlook.com']
     })
   })
 
   it('returns empty accounts when none configured', async () => {
     mockGetState.mockReturnValue('awaiting_setup')
-    mockGetSetupUrl.mockReturnValue(null)
 
     const result = await handleConfig([], { action: 'status' })
 
     expect(result).toEqual({
       action: 'status',
       state: 'awaiting_setup',
-      setup_url: null,
-      accounts: []
-    })
-  })
-
-  it('derives configured state from per-sub accounts in multi-user mode', async () => {
-    // CF multi-user: a read-only per-sub container never runs the single-user
-    // save that flips the global state to 'configured', but the caller's accounts
-    // resolved from KV. config(status) must report 'configured' for this subject,
-    // NOT the misleading process-global 'awaiting_setup'.
-    mockGetState.mockReturnValue('awaiting_setup')
-    mockGetSetupUrl.mockReturnValue(null)
-
-    const result = await subjectContext.run({ sub: 'sub-123', accounts }, () =>
-      handleConfig(accounts, { action: 'status' })
-    )
-
-    expect(result).toEqual({
-      action: 'status',
-      state: 'configured',
-      setup_url: null,
-      accounts: ['user1@gmail.com', 'user2@outlook.com']
-    })
-  })
-
-  it('does not leak the global configured state into a sub with no accounts', async () => {
-    // Cross-subject isolation for the status signal: even when the process-global
-    // state is 'configured' (some OTHER subject set it), a subject whose own
-    // accounts did not resolve must see 'awaiting_setup'.
-    mockGetState.mockReturnValue('configured')
-    mockGetSetupUrl.mockReturnValue(null)
-
-    const result = await subjectContext.run({ sub: 'sub-empty', accounts: [] }, () =>
-      handleConfig([], { action: 'status' })
-    )
-
-    expect(result).toEqual({
-      action: 'status',
-      state: 'awaiting_setup',
-      setup_url: null,
       accounts: []
     })
   })
@@ -142,103 +83,34 @@ describe('config - status', () => {
 describe('config - setup_status', () => {
   it('returns credential state without the accounts list', async () => {
     mockGetState.mockReturnValue('configured')
-    mockGetSetupUrl.mockReturnValue(null)
 
     const result = await handleConfig(accounts, { action: 'setup_status' })
 
     expect(result).toEqual({
       action: 'setup_status',
-      state: 'configured',
-      setup_url: null
+      state: 'configured'
     })
     expect(result).not.toHaveProperty('accounts')
-  })
-
-  it('returns setup URL when in setup_in_progress state', async () => {
-    mockGetState.mockReturnValue('setup_in_progress')
-    mockGetSetupUrl.mockReturnValue('https://relay.example.com/setup/abc123')
-
-    const result = await handleConfig(accounts, { action: 'setup_status' })
-
-    expect(result).toEqual({
-      action: 'setup_status',
-      state: 'setup_in_progress',
-      setup_url: 'https://relay.example.com/setup/abc123'
-    })
-  })
-
-  it('derives configured state from per-sub accounts in multi-user mode (same as status)', async () => {
-    mockGetState.mockReturnValue('awaiting_setup')
-    mockGetSetupUrl.mockReturnValue(null)
-
-    const result = await subjectContext.run({ sub: 'sub-123', accounts }, () =>
-      handleConfig(accounts, { action: 'setup_status' })
-    )
-
-    expect(result).toEqual({
-      action: 'setup_status',
-      state: 'configured',
-      setup_url: null
-    })
   })
 })
 
 describe('config - setup_start', () => {
-  it('returns current state and setup URL without triggering relay spawn', async () => {
+  it('returns current state and setup instructions without a URL', async () => {
     mockGetState.mockReturnValue('awaiting_setup')
-    mockGetSetupUrl.mockReturnValue('http://127.0.0.1:8080/authorize')
 
     const result = await handleConfig([], { action: 'setup_start' })
 
     expect(result).toEqual({
       action: 'setup_start',
       state: 'awaiting_setup',
-      setup_url: 'http://127.0.0.1:8080/authorize'
+      message:
+        'Set EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD) and restart the server, or run `email auth outlook <address>` from the CLI.'
     })
-  })
-
-  it('returns null setup URL when none is registered', async () => {
-    mockGetState.mockReturnValue('awaiting_setup')
-    mockGetSetupUrl.mockReturnValue(null)
-
-    const result = await handleConfig([], { action: 'setup_start' })
-
-    expect(result).toEqual({
-      action: 'setup_start',
-      state: 'awaiting_setup',
-      setup_url: null
-    })
+    expect(result).not.toHaveProperty('setup_url')
   })
 })
 
 describe('config - setup_reset', () => {
-  it('rejects a subject-scoped reset when durable credential cleanup is unavailable', async () => {
-    await expect(
-      subjectContext.run({ sub: 'sub-reset-without-store', accounts }, () =>
-        handleConfig(accounts, { action: 'setup_reset' })
-      )
-    ).rejects.toThrow('Subject credential reset is not configured for HTTP mode.')
-
-    expect(mockResetState).not.toHaveBeenCalled()
-  })
-
-  it('clears the subject-scoped credential store before resetting state', async () => {
-    const clearCredentials = vi.fn().mockResolvedValue(undefined)
-    mockResetState.mockResolvedValue(undefined)
-    mockGetState.mockReturnValue('awaiting_setup')
-
-    const result = await subjectContext.run({ sub: 'sub-reset', accounts }, () =>
-      handleConfig(accounts, { action: 'setup_reset' }, { clearSubjectCredentials: clearCredentials })
-    )
-
-    expect(clearCredentials).toHaveBeenCalledWith('sub-reset')
-    expect(result).toEqual({
-      action: 'setup_reset',
-      state: 'awaiting_setup',
-      message: 'Credential state reset to awaiting_setup. Config file deleted.'
-    })
-  })
-
   it('resets state and returns confirmation', async () => {
     mockResetState.mockResolvedValue(undefined)
     mockGetState.mockReturnValue('awaiting_setup')
@@ -249,7 +121,7 @@ describe('config - setup_reset', () => {
     expect(result).toEqual({
       action: 'setup_reset',
       state: 'awaiting_setup',
-      message: 'Credential state reset to awaiting_setup. Config file deleted.'
+      message: 'Credential state reset to awaiting_setup. Stored config deleted.'
     })
   })
 })
@@ -271,14 +143,14 @@ describe('config - setup_complete', () => {
   })
 
   it('returns empty accounts when still not configured', async () => {
-    mockGetState.mockReturnValue('setup_in_progress')
+    mockGetState.mockReturnValue('awaiting_setup')
     mockResolveCredentialState.mockResolvedValue('awaiting_setup')
 
     const result = await handleConfig([], { action: 'setup_complete' })
 
     expect(result).toEqual({
       action: 'setup_complete',
-      previous_state: 'setup_in_progress',
+      previous_state: 'awaiting_setup',
       state: 'awaiting_setup',
       accounts: []
     })
@@ -314,6 +186,7 @@ describe('config - cache_clear', () => {
 
 describe('config - unknown action', () => {
   it('throws for unknown action', async () => {
-    await expect(handleConfig(accounts, { action: 'unknown' as any })).rejects.toThrow('Unknown action: unknown')
+    const input = { action: 'unknown' } as unknown as ConfigInput
+    await expect(handleConfig(accounts, input)).rejects.toThrow('Unknown action: unknown')
   })
 })

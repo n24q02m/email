@@ -5,7 +5,6 @@ import {
   ReadResourceRequestSchema
 } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
-import { subjectContext } from '../auth/subject-context.js'
 import { registerTools } from './registry.js'
 
 /**
@@ -57,13 +56,7 @@ describe('TOOLS structure', () => {
     {
       name: 'config',
       requiredFields: ['action'],
-      actions: ['status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear'],
-      readOnly: false
-    },
-    {
-      name: 'config__open_relay',
-      requiredFields: [],
-      actions: null,
+      actions: ['status', 'setup_status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear'],
       readOnly: false
     },
     {
@@ -74,13 +67,13 @@ describe('TOOLS structure', () => {
     }
   ]
 
-  it('has exactly 6 tools', () => {
-    expect(EXPECTED_TOOLS).toHaveLength(6)
+  it('has exactly 5 tools', () => {
+    expect(EXPECTED_TOOLS).toHaveLength(5)
   })
 
   it('has correct tool names', () => {
     const names = EXPECTED_TOOLS.map((t) => t.name)
-    expect(names).toEqual(['messages', 'folders', 'attachments', 'config', 'config__open_relay', 'help'])
+    expect(names).toEqual(['messages', 'folders', 'attachments', 'config', 'help'])
   })
 
   it('messages tool has 12 actions', () => {
@@ -110,15 +103,17 @@ describe('TOOLS structure', () => {
     expect(attachments.actions).toEqual(['list', 'download'])
   })
 
-  it('config tool has 6 actions', () => {
+  it('config tool has 7 actions', () => {
     const configTool = EXPECTED_TOOLS.find((t) => t.name === 'config')!
-    expect(configTool.actions).toEqual(['status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear'])
-  })
-
-  it('config__open_relay tool takes no params', () => {
-    const openRelay = EXPECTED_TOOLS.find((t) => t.name === 'config__open_relay')!
-    expect(openRelay.requiredFields).toEqual([])
-    expect(openRelay.actions).toBeNull()
+    expect(configTool.actions).toEqual([
+      'status',
+      'setup_status',
+      'setup_start',
+      'setup_reset',
+      'setup_complete',
+      'set',
+      'cache_clear'
+    ])
   })
 
   it('help tool requires tool_name', () => {
@@ -133,7 +128,7 @@ describe('TOOLS structure', () => {
 
   it('non-read-only tools are correctly marked', () => {
     const writeTools = EXPECTED_TOOLS.filter((t) => !t.readOnly)
-    expect(writeTools.map((t) => t.name)).toEqual(['messages', 'config', 'config__open_relay'])
+    expect(writeTools.map((t) => t.name)).toEqual(['messages', 'config'])
   })
 })
 
@@ -188,10 +183,6 @@ describe('help tool enum', () => {
     expect(HELP_ENUM).toContain('config')
     expect(HELP_ENUM).not.toContain('send')
   })
-
-  it('help enum excludes the relay helper', () => {
-    expect(HELP_ENUM).not.toContain('config__open_relay')
-  })
 })
 
 // ============================================================================
@@ -219,27 +210,5 @@ describe('registerTools function', () => {
     expect(registeredSchemas).toContain(ListResourcesRequestSchema)
     expect(registeredSchemas).toContain(ReadResourceRequestSchema)
     expect(registeredSchemas).toContain(CallToolRequestSchema)
-  })
-
-  it('passes the subject credential reset callback through the config tool', async () => {
-    const mockServer = {
-      setRequestHandler: vi.fn()
-    }
-    const clearSubjectCredentials = vi.fn().mockRejectedValue(new Error('reset callback invoked'))
-
-    registerTools(mockServer as any, [], { clearSubjectCredentials })
-
-    const callToolHandler = mockServer.setRequestHandler.mock.calls.find(
-      ([schema]) => schema === CallToolRequestSchema
-    )?.[1]
-    expect(callToolHandler).toBeTypeOf('function')
-
-    const result = await subjectContext.run({ sub: 'sub-registry-reset', accounts: [] }, () =>
-      callToolHandler({ params: { name: 'config', arguments: { action: 'setup_reset' } } })
-    )
-
-    expect(clearSubjectCredentials).toHaveBeenCalledWith('sub-registry-reset')
-    expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('reset callback invoked')
   })
 })

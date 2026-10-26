@@ -1,49 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock all external dependencies BEFORE importing the module under test
-vi.mock('@n24q02m/mcp-core/storage', () => ({
-  resolveConfig: vi.fn()
-}))
-
-vi.mock('@n24q02m/mcp-core', () => ({
-  writeConfig: vi.fn().mockResolvedValue(undefined),
-  deleteConfig: vi.fn().mockResolvedValue(undefined),
-  tryOpenBrowser: vi.fn()
-}))
-
-vi.mock('./relay-setup.js', () => ({
-  formatCredentials: vi.fn().mockReturnValue('A:B')
-}))
-
-vi.mock('./tools/helpers/config.js', () => ({
-  parseCredentials: vi.fn().mockResolvedValue([])
+vi.mock('@n24q02m/hull/storage', () => ({
+  resolveConfig: vi.fn(),
+  deleteConfig: vi.fn().mockResolvedValue(undefined)
 }))
 
 vi.mock('./tools/helpers/oauth2.js', () => ({
-  ensureValidToken: vi.fn(),
-  isOutlookDomain: vi.fn().mockReturnValue(false),
-  isValidTokenStore: vi.fn().mockReturnValue(true),
-  loadOutlookEmails: vi.fn().mockResolvedValue([]),
-  _getPendingAuths: vi.fn().mockReturnValue(new Set())
+  loadOutlookEmails: vi.fn().mockResolvedValue([])
 }))
 
-vi.mock('node:fs/promises', () => ({
-  readFile: vi.fn(),
-  writeFile: vi.fn(),
-  mkdir: vi.fn(),
-  readdir: vi.fn(),
-  rm: vi.fn()
-}))
-
-vi.mock('node:os', () => ({
-  homedir: vi.fn().mockReturnValue('/tmp/test-home')
-}))
-
-vi.mock('node:path', () => ({
-  join: vi.fn((...args: string[]) => args.join('/'))
-}))
-
-import { resolveConfig } from '@n24q02m/mcp-core/storage'
+import { deleteConfig, resolveConfig } from '@n24q02m/hull/storage'
 import { loadOutlookEmails } from './tools/helpers/oauth2.js'
 
 describe('credential-state', () => {
@@ -56,7 +23,6 @@ describe('credential-state', () => {
     delete process.env.EMAIL_USER
     delete process.env.EMAIL_APP_PASSWORD
     delete process.env.EMAIL_PROVIDER
-    delete process.env.MCP_RELAY_URL
     // Re-import to get fresh module state
     mod = await import('./credential-state.js')
   })
@@ -69,13 +35,9 @@ describe('credential-state', () => {
     vi.restoreAllMocks()
   })
 
-  describe('getState / getSetupUrl', () => {
+  describe('getState', () => {
     it('returns awaiting_setup by default', () => {
       expect(mod.getState()).toBe('awaiting_setup')
-    })
-
-    it('returns null setup URL by default', () => {
-      expect(mod.getSetupUrl()).toBeNull()
     })
   })
 
@@ -85,59 +47,28 @@ describe('credential-state', () => {
       expect(mod.getState()).toBe('configured')
     })
 
-    it('sets state to setup_in_progress', () => {
-      mod.setState('setup_in_progress')
-      expect(mod.getState()).toBe('setup_in_progress')
+    it('sets state back to awaiting_setup', () => {
+      mod.setState('configured')
+      mod.setState('awaiting_setup')
+      expect(mod.getState()).toBe('awaiting_setup')
     })
   })
 
-  describe('setSetupUrl', () => {
-    it('sets the setup URL', () => {
-      const url = 'http://localhost:3000/setup'
-      mod.setSetupUrl(url)
-      expect(mod.getSetupUrl()).toBe(url)
+  describe('legacyCredentials', () => {
+    it('returns EMAIL_CREDENTIALS when present', () => {
+      expect(mod.legacyCredentials({ EMAIL_CREDENTIALS: 'A:B' })).toBe('A:B')
     })
 
-    it('allows clearing the setup URL with null', () => {
-      mod.setSetupUrl('http://localhost:3000/setup')
-      mod.setSetupUrl(null)
-      expect(mod.getSetupUrl()).toBeNull()
+    it('builds email:password from the legacy single-account shape', () => {
+      expect(mod.legacyCredentials({ email: 'e', password: 'p' })).toBe('e:p')
     })
 
-    it('handles undefined (type casting)', () => {
-      mod.setSetupUrl(undefined as unknown as string)
-      expect(mod.getSetupUrl()).toBeUndefined()
+    it('appends imap_host from the legacy single-account shape', () => {
+      expect(mod.legacyCredentials({ email: 'e', password: 'p', imap_host: 'h' })).toBe('e:p:h')
     })
 
-    it('handles empty string', () => {
-      mod.setSetupUrl('')
-      expect(mod.getSetupUrl()).toBe('')
-    })
-
-    it('handles malformed URL', () => {
-      mod.setSetupUrl('not-a-url')
-      expect(mod.getSetupUrl()).toBe('not-a-url')
-    })
-
-    it('updates correctly when called multiple times', () => {
-      mod.setSetupUrl('http://first.com')
-      expect(mod.getSetupUrl()).toBe('http://first.com')
-      mod.setSetupUrl(null)
-      expect(mod.getSetupUrl()).toBeNull()
-      mod.setSetupUrl('http://second.com')
-      expect(mod.getSetupUrl()).toBe('http://second.com')
-    })
-
-    it('handles very long strings', () => {
-      const longUrl = 'a'.repeat(10000)
-      mod.setSetupUrl(longUrl)
-      expect(mod.getSetupUrl()).toBe(longUrl)
-    })
-
-    it('handles special characters and emoji', () => {
-      const specialUrl = 'https://example.com/🚀?q=✨'
-      mod.setSetupUrl(specialUrl)
-      expect(mod.getSetupUrl()).toBe(specialUrl)
+    it('throws when the legacy shape lacks email or password', () => {
+      expect(() => mod.legacyCredentials({ email: 'e' })).toThrow('missing required fields')
     })
   })
 
@@ -174,15 +105,13 @@ describe('credential-state', () => {
         config: { EMAIL_CREDENTIALS: 'A:B' },
         source: 'file'
       } as any)
-      const { formatCredentials } = await import('./relay-setup.js')
-      vi.mocked(formatCredentials).mockReturnValue('A:B')
 
       const result = await mod.resolveCredentialState()
       expect(result).toBe('configured')
       expect(process.env.EMAIL_CREDENTIALS).toBe('A:B')
     })
 
-    it('returns configured when saved OAuth tokens exist (via the token facade)', async () => {
+    it('returns configured when saved OAuth tokens exist', async () => {
       vi.mocked(resolveConfig).mockResolvedValue({ config: null, source: '' } as any)
       vi.mocked(loadOutlookEmails).mockResolvedValue(['E1'])
 
@@ -200,7 +129,7 @@ describe('credential-state', () => {
       expect(process.env.EMAIL_CREDENTIALS).toBe('E1:oauth2,E2:oauth2')
     })
 
-    it('returns awaiting_setup when nothing found (facade returns no emails)', async () => {
+    it('returns awaiting_setup when nothing found (no config, no saved tokens)', async () => {
       vi.mocked(resolveConfig).mockResolvedValue({ config: null, source: '' } as any)
       vi.mocked(loadOutlookEmails).mockResolvedValue([])
 
@@ -216,7 +145,7 @@ describe('credential-state', () => {
       expect(result).toBe('awaiting_setup')
     })
 
-    it('handles a token facade error gracefully', async () => {
+    it('handles a saved token read error gracefully', async () => {
       vi.mocked(resolveConfig).mockResolvedValue({ config: null, source: '' } as any)
       vi.mocked(loadOutlookEmails).mockRejectedValue(new Error('READ_ERROR'))
 
@@ -225,37 +154,17 @@ describe('credential-state', () => {
     })
   })
 
-  describe('setMarkSetupComplete / getMarkSetupComplete', () => {
-    it('stores and returns the hook fn', () => {
-      const hook = vi.fn()
-      mod.setMarkSetupComplete(hook)
-      expect(mod.getMarkSetupComplete()).toBe(hook)
-    })
-
-    it('allows clearing the hook with null', () => {
-      mod.setMarkSetupComplete(vi.fn())
-      mod.setMarkSetupComplete(null)
-      expect(mod.getMarkSetupComplete()).toBeNull()
-    })
-
-    it('returns null by default (fresh module)', () => {
-      expect(mod.getMarkSetupComplete()).toBeNull()
-    })
-  })
-
   describe('resetState', () => {
-    it('resets to awaiting_setup and clears setupUrl', async () => {
+    it('resets to awaiting_setup', async () => {
       mod.setState('configured')
-      mod.setSetupUrl('http://localhost:3000/setup')
 
       await mod.resetState()
 
       expect(mod.getState()).toBe('awaiting_setup')
-      expect(mod.getSetupUrl()).toBeNull()
+      expect(vi.mocked(deleteConfig)).toHaveBeenCalledWith('better-email-mcp')
     })
 
     it('handles deleteConfig error gracefully', async () => {
-      const { deleteConfig } = await import('@n24q02m/mcp-core')
       vi.mocked(deleteConfig).mockRejectedValue(new Error('file not found'))
 
       mod.setState('configured')

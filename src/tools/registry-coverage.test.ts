@@ -11,8 +11,7 @@ vi.mock('./composite/config.js', () => ({ handleConfig: vi.fn() }))
 vi.mock('./helpers/config.js', () => ({ loadConfig: vi.fn() }))
 
 vi.mock('../credential-state.js', () => ({
-  getState: vi.fn(),
-  getSetupUrl: vi.fn()
+  getState: vi.fn()
 }))
 
 vi.mock('node:fs/promises', () => ({
@@ -80,29 +79,9 @@ describe('registry.ts coverage - additional paths', () => {
       expect(messages).toHaveBeenCalledWith([{ email: 'reloaded@example.com' }], expect.anything())
     })
 
-    it('should return setup instructions with URL when unconfigured', async () => {
-      const { getState, getSetupUrl } = await import('../credential-state.js')
+    it('should return setup instructions when unconfigured', async () => {
+      const { getState } = await import('../credential-state.js')
       vi.mocked(getState).mockReturnValue('awaiting_setup')
-      vi.mocked(getSetupUrl).mockReturnValue('https://setup.example.com')
-
-      const { callToolHandler } = setupHandler([])
-
-      const result = await callToolHandler({
-        params: {
-          name: 'messages',
-          arguments: { action: 'search', query: 'ALL' }
-        }
-      })
-
-      expect(result.isError).toBe(true)
-      expect(result.content[0].text).toContain('Email credentials are not configured yet')
-      expect(result.content[0].text).toContain('https://setup.example.com')
-    })
-
-    it('should return setup instructions without URL when unconfigured and no URL available', async () => {
-      const { getState, getSetupUrl } = await import('../credential-state.js')
-      vi.mocked(getState).mockReturnValue('awaiting_setup')
-      vi.mocked(getSetupUrl).mockReturnValue(null)
 
       const { callToolHandler } = setupHandler([])
 
@@ -115,7 +94,7 @@ describe('registry.ts coverage - additional paths', () => {
 
       expect(result.isError).toBe(true)
       expect(result.content[0].text).toContain('Email credentials are not configured')
-      expect(result.content[0].text).not.toContain('open this URL')
+      expect(result.content[0].text).toContain('email auth outlook')
     })
   })
 
