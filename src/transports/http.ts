@@ -15,6 +15,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { type HttpAuthConfig, isLoopbackHost, type RunHttpServerOptions, runHttpServer } from '@n24q02m/hull'
 import { resolveCredentialState } from '../credential-state.js'
+import { getVersion } from '../init-server.js'
 import { loadConfig } from '../tools/helpers/config.js'
 import { registerTools } from '../tools/registry.js'
 
@@ -48,7 +49,7 @@ export async function startHttp(): Promise<void> {
 
   const serverFactory = (): McpServer => {
     const server = new Server(
-      { name: `@n24q02m/${SERVER_NAME}`, version: '0.0.0' },
+      { name: `@n24q02m/${SERVER_NAME}`, version: getVersion() },
       { capabilities: { tools: {}, resources: {} } }
     )
     registerTools(server, accounts)
