@@ -11,16 +11,8 @@ vi.mock('./composite/attachments.js', () => ({ attachments: vi.fn() }))
 vi.mock('./composite/config.js', () => ({ handleConfig: vi.fn() }))
 vi.mock('./helpers/config.js', () => ({ loadConfig: vi.fn() }))
 
-// Mock buildOpenRelayHandler from @n24q02m/mcp-core
-const mockOpenRelayResult = { url: 'http://localhost/setup', browserOpened: true }
-const mockOpenRelayHandler = vi.fn().mockResolvedValue(mockOpenRelayResult)
-vi.mock('@n24q02m/mcp-core', () => ({
-  buildOpenRelayHandler: vi.fn(() => mockOpenRelayHandler)
-}))
-
 vi.mock('../credential-state.js', () => ({
-  getState: vi.fn(),
-  getSetupUrl: vi.fn()
+  getState: vi.fn()
 }))
 
 vi.mock('node:fs/promises', () => ({
@@ -47,7 +39,6 @@ describe('registry.ts coverage - error and edge paths', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockOpenRelayHandler.mockResolvedValue(mockOpenRelayResult)
   })
 
   describe('ReadResourceRequestSchema', () => {
@@ -200,10 +191,9 @@ describe('registry.ts coverage - error and edge paths', () => {
     })
 
     describe('Credential guard branches', () => {
-      it('should return setup instructions WITH url when unconfigured', async () => {
-        const { getState, getSetupUrl } = await import('../credential-state.js')
+      it('should return setup instructions when unconfigured', async () => {
+        const { getState } = await import('../credential-state.js')
         vi.mocked(getState).mockReturnValue('awaiting_setup')
-        vi.mocked(getSetupUrl).mockReturnValue('https://setup.example.com')
 
         const { callToolHandler } = setupHandler([])
 
@@ -215,25 +205,7 @@ describe('registry.ts coverage - error and edge paths', () => {
         })
 
         expect(result.isError).toBe(true)
-        expect(result.content[0].text).toContain('open this URL in your browser:\nhttps://setup.example.com')
-      })
-
-      it('should return setup instructions WITHOUT url when unconfigured', async () => {
-        const { getState, getSetupUrl } = await import('../credential-state.js')
-        vi.mocked(getState).mockReturnValue('awaiting_setup')
-        vi.mocked(getSetupUrl).mockReturnValue(null)
-
-        const { callToolHandler } = setupHandler([])
-
-        const result = await callToolHandler({
-          params: {
-            name: 'messages',
-            arguments: { action: 'search' }
-          }
-        })
-
-        expect(result.isError).toBe(true)
-        expect(result.content[0].text).toContain('In stdio mode: set EMAIL_PROVIDER')
+        expect(result.content[0].text).toContain('Email credentials are not configured')
       })
     })
 
@@ -329,30 +301,6 @@ describe('registry.ts coverage - error and edge paths', () => {
         expect(result.isError).toBe(true)
         expect(result.content[0].text).toContain('Error: Hot-reload failed')
       })
-    })
-  })
-
-  describe('config__open_relay', () => {
-    it('should successfully call config__open_relay', async () => {
-      const { callToolHandler } = setupHandler()
-
-      const result = await callToolHandler({
-        params: {
-          name: 'config__open_relay',
-          arguments: {}
-        }
-      })
-
-      expect(result).toEqual({
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify(mockOpenRelayResult, null, 2)
-          }
-        ],
-        structuredContent: mockOpenRelayResult
-      })
-      expect(mockOpenRelayHandler).toHaveBeenCalled()
     })
   })
 })

@@ -10,10 +10,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { tryOpenBrowser } from '@n24q02m/mcp-core'
-import type { CredStoreLike } from '../../auth/in-memory-cred-store.js'
-import { currentSub } from '../../auth/subject-context.js'
-import { getMarkSetupComplete, setState } from '../../credential-state.js'
+import { tryOpenBrowser } from '@n24q02m/hull'
+import { setState } from '../../credential-state.js'
 import { isSafeUrl } from './security.js'
 
 // Microsoft OAuth2 endpoints. The tenant segment decides which directory signs
@@ -34,9 +32,7 @@ let warnedInvalidTenant: string | null = null
 
 /**
  * Tenant used for the device-code and token endpoints. ``OUTLOOK_TENANT`` wins
- * when it is set and well-formed; otherwise the caller's default applies (the
- * two call sites differ: this module historically signs in personal accounts,
- * the HTTP delegated flow uses "common").
+ * when it is set and well-formed; otherwise the caller's default applies.
  */
 export function getOutlookTenant(fallback: string = DEFAULT_TENANT): string {
   const configured = process.env.OUTLOOK_TENANT?.trim()
@@ -91,10 +87,8 @@ const DEFAULT_POLLING_INTERVAL_SECONDS = 5
 const SLOW_DOWN_BACKOFF_MS = 5000
 const TOKEN_REFRESH_BUFFER_SECONDS = 300
 
-// Persistent token storage. The directory keeps its pre-rename name on purpose:
-// it is the same ~/.better-email-mcp that mcp-core's PerPluginStore uses for the
-// 'better-email' slug, and moving it would strand saved Outlook tokens. It moves
-// together with the store once mcp-core storage has a base-dir option.
+// Persistent token storage: ~/.better-email-mcp/tokens.json (0600). The directory
+// keeps its pre-rename name so tokens saved by earlier releases stay readable.
 const CONFIG_DIR = join(homedir(), '.better-email-mcp')
 const TOKEN_FILE = join(CONFIG_DIR, 'tokens.json')
 
@@ -259,36 +253,7 @@ export function getClientId(): string {
 }
 
 /**
- * Outlook token persistence — embed in the per-sub credential blob on
- * Cloudflare / HTTP multi-user deploys, fall back to the email-keyed
- * ``tokens.json`` file for single-user / stdio.
- *
- * The HTTP transport injects (``setOutlookTokenStore``) the SAME per-sub store
- * instance it uses for accounts, so a token write and a later account read
- * share ONE per-sub cache (coherent across a container instance; survives
- * recreate because the underlying KV is external). Tokens live under the
- * ``outlookTokens`` field of ``subs/<sub>/config`` — the embed design
- * (2026-06-16): no separate token KV namespace, mirroring better-notion-mcp.
- * When no store is injected (stdio never starts the HTTP transport) the legacy
- * file path runs. See ``feedback_cf_container_ts_deploy_gotchas`` (read-side warm).
- */
-let outlookTokenStore: CredStoreLike | null = null
-
-/** Inject the per-sub credential store used for embedding Outlook tokens.
- *
- * When the store is set (HTTP multi-user mode), device-code sessions are
- * persisted to KV so the background poll survives container sleep/recreate.
- * On container wake, the KV entry is checked in ``ensureValidToken()`` before
- * starting a fresh device-code flow, and the poll is resumed automatically.
- */
-export function setOutlookTokenStore(store: CredStoreLike | null): void {
-  outlookTokenStore = store
-}
-
-/**
- * In-memory cache for the FILE path ONLY (single-user). The embed path relies
- * on the injected per-sub store's own cache, so it never reads/writes this
- * global — doing so would bleed one sub's tokens into another's read.
+ * In-memory cache of the email-keyed token file (single-user).
  */
 let cachedTokenStore: TokenStore | null = null
 
@@ -297,34 +262,12 @@ export function _resetTokenCache(): void {
   cachedTokenStore = null
 }
 
-/** Resolve the sub scope: an explicit arg wins; ``undefined`` => ``currentSub()``. */
-function resolveScope(sub: string | null | undefined): string | null {
-  return sub === undefined ? currentSub() : sub
-}
-
 /**
- * Load stored OAuth2 tokens for an email account (optionally for an explicit
- * ``sub``; absent => the current request scope). Returns null if none stored.
+ * Load stored OAuth2 tokens for an email account. Returns null if none stored.
  */
-export async function loadStoredTokens(email: string, sub?: string | null): Promise<OAuth2Tokens | null> {
+export async function loadStoredTokens(email: string): Promise<OAuth2Tokens | null> {
   if (!email?.trim()) throw new Error('Email is required')
-  const scope = resolveScope(sub)
   const key = email.toLowerCase()
-
-  // Embed path: read the per-sub blob's outlookTokens map. The injected store's
-  // own cache gives R2 coherence; never touch the global cachedTokenStore here.
-  if (outlookTokenStore && scope) {
-    try {
-      const blob = await outlookTokenStore.load(scope)
-      const map = blob?.outlookTokens as TokenStore | undefined
-      const tok = map?.[key]
-      return tok && isValidTokens(tok) ? tok : null
-    } catch {
-      return null
-    }
-  }
-
-  // File path (single-user / stdio).
   try {
     if (cachedTokenStore) {
       return cachedTokenStore[key] || null
@@ -336,29 +279,16 @@ export async function loadStoredTokens(email: string, sub?: string | null): Prom
     }
     cachedTokenStore = store
     return store[key] || null
-  } catch (err: unknown) {
-    if (err && typeof err === 'object' && 'code' in err && err.code !== 'ENOENT') {
-      // Ignore parse errors or other issues, return null
-    }
+  } catch {
     return null
   }
 }
 
 /**
- * Emails (keys) of the stored Outlook token map for the given sub
- * (``null`` = single-user / file store). Used at startup by credential-state to
- * synthesize the ``email:oauth2`` credential string without a raw FS read.
+ * Emails (keys) of the stored Outlook token file. Used at startup by
+ * credential-state to synthesize the ``email:oauth2`` credential string.
  */
-export async function loadOutlookEmails(sub: string | null): Promise<string[]> {
-  if (outlookTokenStore && sub) {
-    try {
-      const blob = await outlookTokenStore.load(sub)
-      const map = blob?.outlookTokens as TokenStore | undefined
-      return map && isValidTokenStore(map) ? Object.keys(map).filter((k) => k.includes('@')) : []
-    } catch {
-      return []
-    }
-  }
+export async function loadOutlookEmails(): Promise<string[]> {
   try {
     const data = await readFile(TOKEN_FILE, 'utf-8')
     const store = parseTokenStore(data)
@@ -369,42 +299,17 @@ export async function loadOutlookEmails(sub: string | null): Promise<string[]> {
 }
 
 /**
- * Persist OAuth2 tokens. Embed path (a sub + an injected store): load the
- * current per-sub blob fresh, merge the token into ``outlookTokens``, write it
- * back — preserving ``accounts``. The per-sub Container DO is single-threaded so
- * this load-then-save is atomic enough, and R1 (``sleepAfter >= 20m``) keeps the
- * device-code poll's target instance alive. File path (single-user / stdio):
- * the legacy 0600 ``tokens.json`` write.
+ * Persist OAuth2 tokens to the email-keyed ``tokens.json`` (0600).
  */
-export async function saveTokens(email: string, tokens: OAuth2Tokens, sub?: string | null): Promise<void> {
+export async function saveTokens(email: string, tokens: OAuth2Tokens): Promise<void> {
   if (!email?.trim()) throw new Error('Email is required')
-  const scope = resolveScope(sub)
-  const key = email.toLowerCase()
-
-  if (outlookTokenStore && scope) {
-    const blob: Record<string, unknown> = (await outlookTokenStore.load(scope)) ?? {}
-    const map: TokenStore = { ...(blob.outlookTokens as TokenStore | undefined) }
-    map[key] = tokens
-    // If there is a pending device-code session that just completed for this
-    // email, clear it from KV so stale entries don't survive restart.
-    const pending = blob.pendingDeviceCode as PendingDeviceCodeEntry | undefined
-    const updated: Record<string, unknown> = { ...blob, outlookTokens: map }
-    if (pending && pending.email === key) {
-      delete updated.pendingDeviceCode
-    }
-    await outlookTokenStore.save(scope, updated)
-    return
-  }
-
-  saveTokensToFile(key, tokens)
+  saveTokensToFile(email.toLowerCase(), tokens)
 }
 
 /**
- * Delete stored OAuth2 token(s) from the local file store (single-user /
- * stdio CLI scope only -- HTTP multi-user tokens live in the per-sub KV blob
- * and are cleared via account-level ``config`` actions, not this CLI path).
- * Omitting ``email`` clears every stored token. Returns the email keys that
- * were actually removed (empty array if there was nothing to delete).
+ * Delete stored OAuth2 token(s) from the token file. Omitting ``email`` clears
+ * every stored token. Returns the email keys that were actually removed (empty
+ * array if there was nothing to delete).
  */
 export async function deleteStoredTokens(email?: string): Promise<string[]> {
   if (!existsSync(TOKEN_FILE)) {
@@ -442,9 +347,7 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
 }
 
 /**
- * Legacy email-keyed ``tokens.json`` write (single-user / stdio). Synchronous so
- * the file side-effect runs before ``saveTokens`` yields — preserving the
- * historical fire-and-forget contract. Creates the config dir if needed; 0600.
+ * Write the email-keyed ``tokens.json`` (0600). Synchronous; creates the config dir if needed.
  */
 function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
   if (!existsSync(CONFIG_DIR)) {
@@ -513,77 +416,9 @@ export function _getPendingAuths(): Map<string, PendingAuth> {
   return pendingAuths
 }
 
-// --- Device-code KV persistence (survives container sleep/recreate on CF) ---
-
 /**
- * Device-code session persisted to KV so the poll can resume after container
- * sleep/recreate (the poll's target DO instance survives via the KV copy).
- *
- * The ``expiresAt`` field uses the same millisecond base as ``Date.now()``,
- * consistent with the RAM ``PendingAuth`` map.
- */
-interface PendingDeviceCodeEntry {
-  verificationUri: string
-  userCode: string
-  expiresAt: number
-  deviceCode: string
-  interval: number
-  email: string
-}
-
-/** Persist the device-code session to KV under the sub's config blob. */
-async function persistPendingDeviceCode(sub: string, entry: PendingDeviceCodeEntry): Promise<void> {
-  if (!outlookTokenStore) return
-  const blob: Record<string, unknown> = (await outlookTokenStore.load(sub)) ?? { accounts: [] }
-  await outlookTokenStore.save(sub, { ...blob, pendingDeviceCode: entry })
-}
-
-/** Load a pending device-code session from KV, returning null if absent or expired. */
-async function loadPendingDeviceCode(sub: string): Promise<PendingDeviceCodeEntry | null> {
-  if (!outlookTokenStore) return null
-  try {
-    const blob = await outlookTokenStore.load(sub)
-    if (!blob) return null
-    const entry = blob.pendingDeviceCode as PendingDeviceCodeEntry | undefined
-    if (!entry) return null
-    // Guard against stale entries (past expiry) so we don't resume a dead poll.
-    if (entry.expiresAt <= Date.now()) return null
-    return entry
-  } catch {
-    return null
-  }
-}
-
-/** Clear the pending device-code session from the KV blob (best-effort). */
-async function clearPendingDeviceCode(sub: string): Promise<void> {
-  if (!outlookTokenStore) return
-  try {
-    const blob: Record<string, unknown> = (await outlookTokenStore.load(sub)) ?? {}
-    if (blob.pendingDeviceCode === undefined) return
-    const { pendingDeviceCode: _, ...rest } = blob
-    await outlookTokenStore.save(sub, rest)
-  } catch {
-    // Best-effort — the poll retry / expiry logic already handles the stale case.
-  }
-}
-
-/**
- * Dedupe + browser-open logic is delegated to ``mcp-core``'s
- * ``tryOpenBrowser``: it validates the URL (only http/https), uses
- * ``execFile`` to avoid shell injection, detects WSL, and dedupes repeat calls
- * for the same URL within a 5-minute window. Exported for backward compat
- * with tests that reset test state.
- */
-/** Exposed for testing — no-op after mcp-core consolidation. */
-export function _resetBrowserOpenDedupe(): void {
-  // mcp-core owns the dedupe map now; this helper is retained only so that
-  // older test files that still call it do not break. Tests that need a
-  // fresh dedupe state should mock ``@n24q02m/mcp-core`` instead.
-}
-
-/**
- * Open a URL in the user's default browser safely. Wraps mcp-core's
- * ``tryOpenBrowser`` in a fire-and-forget fashion so OAuth callers do not
+ * Open a URL in the user's default browser safely. Wraps ``tryOpenBrowser``
+ * from ``@n24q02m/hull`` in a fire-and-forget fashion so OAuth callers do not
  * block on browser launch. Validates URL before opening to prevent injection.
  */
 function openBrowser(url: string): void {
@@ -617,21 +452,15 @@ async function requestDeviceCode(clientId: string): Promise<DeviceCodeResponse> 
 }
 
 /**
- * Poll for token in the background. Saves to disk when authorized.
+ * Poll for token in the background. Saves to the token file when authorized.
  * Runs silently — errors are logged to stderr, not thrown.
- *
- * Optional `onComplete` callback is invoked after tokens are persisted to
- * disk so callers (HTTP transport) can signal setup completion to the
- * credential form via /setup-status.
  */
 function startBackgroundPoll(
   clientId: string,
   deviceCode: string,
   interval: number,
   expiresIn: number,
-  email: string,
-  onComplete?: () => void,
-  sub?: string | null
+  email: string
 ): void {
   const emailKey = email.toLowerCase()
   const deadline = Date.now() + expiresIn * MS_PER_SECOND
@@ -655,39 +484,14 @@ function startBackgroundPoll(
 
       if (data.access_token) {
         const now = Math.floor(Date.now() / MS_PER_SECOND)
-        await saveTokens(
-          email,
-          {
-            accessToken: data.access_token,
-            refreshToken: data.refresh_token,
-            expiresAt: now + data.expires_in,
-            clientId
-          },
-          sub
-        )
+        await saveTokens(email, {
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: now + data.expires_in,
+          clientId
+        })
         pendingAuths.delete(emailKey)
-        // Also clear the device-code session from KV so it doesn't resume
-        // stale after a future container recreate.
-        if (outlookTokenStore && sub) {
-          clearPendingDeviceCode(sub).catch(() => {
-            /* best-effort */
-          })
-        }
-
         setState('configured')
-        try {
-          getMarkSetupComplete()?.('outlook')
-        } catch {
-          // Best-effort -- ignore hook errors.
-        }
-
-        if (onComplete) {
-          try {
-            onComplete()
-          } catch {
-            // Best-effort -- ignore callback errors.
-          }
-        }
         return
       }
       if (data.error === 'authorization_pending') continue
@@ -708,27 +512,16 @@ function startBackgroundPoll(
 }
 
 /**
- * Initiate the Device Code OAuth flow for an Outlook account without
- * throwing. Used by the HTTP /authorize callback to surface the sign-in
- * URL + user code to the custom credential form.
+ * Initiate the Device Code OAuth flow for an Outlook account without throwing.
+ * Returns the sign-in URL and user code; the background poll saves tokens on success.
  *
- * If a pending auth already exists for this email (e.g. user resubmitted the
- * form), returns the existing codes instead of requesting new ones. The
- * background poll saves tokens on success and invokes ``onComplete`` so the
- * form can mark setup complete via GET /setup-status.
- *
- * ``sub`` is threaded EXPLICITLY (not read from ``currentSub()``) because the
- * /authorize callback that initiates this flow does not run inside the per-mcp
- * request scope — the JWT sub comes from ``onCredentialsSaved``'s context. The
- * detached background poll uses it to write the token to the right per-sub blob.
+ * If a pending auth already exists for this email, returns the existing codes
+ * instead of requesting new ones.
  */
 export async function initiateOutlookDeviceCode(
-  email: string,
-  onComplete?: () => void,
-  sub?: string | null
+  email: string
 ): Promise<{ verificationUri: string; userCode: string; expiresIn: number; interval: number }> {
   if (!email?.trim()) throw new Error('Email is required')
-  const scope = resolveScope(sub)
   const emailKey = email.toLowerCase()
   const existing = pendingAuths.get(emailKey)
   if (existing && existing.expiresAt > Date.now()) {
@@ -749,23 +542,7 @@ export async function initiateOutlookDeviceCode(
     expiresAt: Date.now() + codeData.expires_in * MS_PER_SECOND
   })
 
-  // Persist the device-code session to KV so it survives container
-  // sleep/recreate on Cloudflare (sleepAfter can be <15m because the
-  // poll resumes from KV on container wake).
-  if (outlookTokenStore && scope) {
-    persistPendingDeviceCode(scope, {
-      verificationUri: codeData.verification_uri,
-      userCode: codeData.user_code,
-      expiresAt: Date.now() + codeData.expires_in * MS_PER_SECOND,
-      deviceCode: codeData.device_code,
-      interval: codeData.interval || DEFAULT_POLLING_INTERVAL_SECONDS,
-      email: emailKey
-    }).catch(() => {
-      // Best-effort — the RAM map is the primary cache; KV is for survival.
-    })
-  }
-
-  startBackgroundPoll(clientId, codeData.device_code, codeData.interval, codeData.expires_in, email, onComplete, scope)
+  startBackgroundPoll(clientId, codeData.device_code, codeData.interval, codeData.expires_in, email)
 
   // Auto-open browser for desktop environments (best-effort; no-op in CI/E2E)
   openBrowser(codeData.verification_uri)
@@ -822,37 +599,6 @@ export async function ensureValidToken(
 
     const emailKey = account.email.toLowerCase()
 
-    // First, check KV for a pending device-code session that survived a
-    // container sleep/recreate — resume the background poll if found.
-    const sub = currentSub()
-    if (sub && outlookTokenStore) {
-      const kvPending = await loadPendingDeviceCode(sub)
-      if (kvPending && kvPending.email === emailKey) {
-        // Populate RAM cache so retries within the same container instance
-        // see the pending auth without another KV round-trip.
-        pendingAuths.set(emailKey, {
-          verificationUri: kvPending.verificationUri,
-          userCode: kvPending.userCode,
-          expiresAt: kvPending.expiresAt
-        })
-        startBackgroundPoll(
-          getClientId(),
-          kvPending.deviceCode,
-          kvPending.interval,
-          Math.max(1, Math.ceil((kvPending.expiresAt - Date.now()) / MS_PER_SECOND)),
-          kvPending.email,
-          undefined,
-          sub
-        )
-        throw new Error(
-          `Outlook sign-in in progress for ${account.email}.\n` +
-            `Visit: ${kvPending.verificationUri}\n` +
-            `Enter code: ${kvPending.userCode}\n\n` +
-            `After signing in, retry your request.`
-        )
-      }
-    }
-
     const pending = pendingAuths.get(emailKey)
 
     if (pending && pending.expiresAt > Date.now()) {
@@ -875,31 +621,7 @@ export async function ensureValidToken(
       expiresAt: Date.now() + codeData.expires_in * MS_PER_SECOND
     })
 
-    // Also persist the device-code session to KV so it survives container sleep.
-    if (outlookTokenStore && sub) {
-      persistPendingDeviceCode(sub, {
-        verificationUri: codeData.verification_uri,
-        userCode: codeData.user_code,
-        expiresAt: Date.now() + codeData.expires_in * MS_PER_SECOND,
-        deviceCode: codeData.device_code,
-        interval: codeData.interval || DEFAULT_POLLING_INTERVAL_SECONDS,
-        email: emailKey
-      }).catch(() => {
-        // Best-effort — the RAM map is the primary cache.
-      })
-    }
-
-    // Capture the sub now (tool-call request scope) so the detached poll writes
-    // the token to the right per-sub blob even after this request returns.
-    startBackgroundPoll(
-      clientId,
-      codeData.device_code,
-      codeData.interval,
-      codeData.expires_in,
-      account.email,
-      undefined,
-      sub
-    )
+    startBackgroundPoll(clientId, codeData.device_code, codeData.interval, codeData.expires_in, account.email)
 
     // Auto-open browser for desktop environments
     openBrowser(codeData.verification_uri)
@@ -934,24 +656,21 @@ export async function ensureValidToken(
     account.oauth2.refreshToken = newTokens.refresh_token
   }
 
-  // Persist updated tokens (embed under currentSub() when in a request scope,
-  // else the legacy file path for single-user / stdio).
+  // Persist updated tokens to the token file.
   await saveTokens(account.email, account.oauth2)
 
   return newTokens.access_token
 }
 
 /**
- * Save Outlook tokens received via mcp-core delegated OAuth callback.
+ * Save Outlook tokens from an external OAuth callback.
  *
- * mcp-core's ``TokenCallback`` delivers ``OAuthTokens`` (Record<string, unknown>).
- * Adapts that to the existing ``saveTokens(email, OAuth2Tokens)`` format so
- * remote-relay mode shares the same token file as local-relay / CLI auth flows.
+ * The callback delivers ``OAuthTokens`` (Record<string, unknown>); this adapts
+ * them to the ``saveTokens(email, OAuth2Tokens)`` format used by the CLI flow.
  *
- * The email is extracted from the token's ``email`` field (set by the upstream
- * form) or from ``OUTLOOK_EMAIL`` env var if the caller knows the account.
- * When neither is present, tokens are stored under the ``id_token`` subject
- * claim as a fallback (uncommon in device-code flows).
+ * The email is taken from the token's ``email`` field or from the
+ * ``OUTLOOK_EMAIL`` env var. When neither is present, tokens are stored under
+ * the ``sub`` or ``id_token`` subject claim as a fallback.
  */
 export async function saveOutlookTokens(tokens: Record<string, unknown>): Promise<void> {
   const email =
@@ -971,11 +690,6 @@ export async function saveOutlookTokens(tokens: Record<string, unknown>): Promis
   })
 
   setState('configured')
-  try {
-    getMarkSetupComplete()?.('outlook')
-  } catch {
-    // Best-effort -- ignore hook errors.
-  }
 }
 
 /**
@@ -1022,11 +736,6 @@ export async function deviceCodeAuth(email: string, clientId?: string): Promise<
 
       await saveTokens(email, tokens)
       setState('configured')
-      try {
-        getMarkSetupComplete()?.('outlook')
-      } catch {
-        // Best-effort -- ignore hook errors.
-      }
       console.error(`\nSuccess! Token saved for ${email}`)
       return tokens
     }

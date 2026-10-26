@@ -1,0 +1,3 @@
+{
+  "tools": ["messages", "folders", "attachments", "config", "help"]
+}

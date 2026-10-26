@@ -1,12 +1,12 @@
 /**
  * email MCP Server Starter
  *
- * Wired via mcp-core's buildCli: `auth`/`logout` subcommands route to the
+ * Wired via hull's buildCli: `auth`/`logout` subcommands route to the
  * OAuth2 device-code CLI (extra handlers); bare/flag argv starts the MCP
- * server (config/relay/doctor/--version/-h built in).
+ * server (hull built-ins such as config, doctor, --version, -h remain available).
  */
 
-import { buildCli } from '@n24q02m/mcp-core'
+import { buildCli } from '@n24q02m/hull'
 import { runAuth, runLogout } from '../src/auth-cli.js'
 import { getVersion, initServer } from '../src/init-server.js'
 
@@ -64,6 +64,10 @@ buildCli(SERVER_NAME, {
     logout: async () => {
       await runLogout()
       return 0
+    },
+    relay: async () => {
+      console.error('relay was removed; run `email auth` (see README)')
+      return 2
     }
   }
 })(process.argv.slice(2)).then((code) => process.exit(code))

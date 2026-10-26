@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises'
-import { tryOpenBrowser } from '@n24q02m/mcp-core'
+import { tryOpenBrowser } from '@n24q02m/hull'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from '../src/tools/helpers/config.js'
 import * as oauth2 from '../src/tools/helpers/oauth2.js'
@@ -18,7 +18,7 @@ const { clients, imapFlow } = vi.hoisted(() => {
 
 vi.mock('imapflow', () => ({ ImapFlow: imapFlow }))
 vi.mock('mailparser', () => ({ simpleParser: vi.fn().mockResolvedValue({ text: 'fixture body' }) }))
-vi.mock('@n24q02m/mcp-core', () => ({ tryOpenBrowser: vi.fn().mockResolvedValue(true) }))
+vi.mock('@n24q02m/hull', () => ({ tryOpenBrowser: vi.fn().mockResolvedValue(true) }))
 vi.mock('node:fs/promises', () => ({ readFile: vi.fn() }))
 vi.mock('node:fs', () => ({
   existsSync: vi.fn(),

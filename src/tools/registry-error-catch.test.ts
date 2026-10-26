@@ -10,15 +10,8 @@ vi.mock('./composite/attachments.js', () => ({ attachments: vi.fn() }))
 vi.mock('./composite/config.js', () => ({ handleConfig: vi.fn() }))
 vi.mock('./helpers/config.js', () => ({ loadConfig: vi.fn() }))
 
-const mockOpenRelayResult = { url: 'http://localhost/setup' }
-const mockOpenRelayHandler = vi.fn().mockResolvedValue(mockOpenRelayResult)
-vi.mock('@n24q02m/mcp-core', () => ({
-  buildOpenRelayHandler: vi.fn(() => mockOpenRelayHandler)
-}))
-
 vi.mock('../credential-state.js', () => ({
-  getState: vi.fn(),
-  getSetupUrl: vi.fn()
+  getState: vi.fn()
 }))
 
 vi.mock('node:fs/promises', () => ({
@@ -49,7 +42,6 @@ describe('registry.ts catch block coverage', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockOpenRelayHandler.mockResolvedValue(mockOpenRelayResult)
   })
 
   it('handles EmailMCPError in catch block', async () => {
@@ -95,16 +87,17 @@ describe('registry.ts catch block coverage', () => {
     expect(result.content[0].text).toContain('SMTP authentication failed')
   })
 
-  it('handles error from config__open_relay', async () => {
-    mockOpenRelayHandler.mockRejectedValue(new Error('Relay failed'))
+  it('handles error from config action', async () => {
+    const { handleConfig } = await import('./composite/config.js')
+    vi.mocked(handleConfig).mockRejectedValue(new Error('Config failed'))
 
     const { callToolHandler } = setupHandler()
     const result = await callToolHandler({
-      params: { name: 'config__open_relay', arguments: {} }
+      params: { name: 'config', arguments: { action: 'status' } }
     })
 
     expect(result.isError).toBe(true)
-    expect(result.content[0].text).toContain('Error: Relay failed')
+    expect(result.content[0].text).toContain('Error: Config failed')
   })
 
   it('handles error from wrapToolResult (TypeError)', async () => {

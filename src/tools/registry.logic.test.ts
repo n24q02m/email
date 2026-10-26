@@ -15,8 +15,7 @@ vi.mock('./composite/config.js', () => ({ handleConfig: vi.fn() }))
 
 // Mock credential state to return 'configured' so tools execute normally
 vi.mock('../credential-state.js', () => ({
-  getState: vi.fn(() => 'configured'),
-  getSetupUrl: vi.fn(() => null)
+  getState: vi.fn(() => 'configured')
 }))
 
 import { registerTools } from './registry.js'
@@ -84,7 +83,7 @@ function createMockServerWithHandlers() {
 }
 
 describe('ListToolsRequestSchema handler', () => {
-  it('should return exactly 7 tools with correct names', async () => {
+  it('should return exactly 5 tools with correct names', async () => {
     const { getHandler } = createMockServerWithHandlers()
     const handler = getHandler(ListToolsRequestSchema)
 
@@ -92,9 +91,9 @@ describe('ListToolsRequestSchema handler', () => {
 
     const result = await handler({})
 
-    expect(result.tools).toHaveLength(6)
-    const names = result.tools.map((t: any) => t.name)
-    expect(names).toEqual(['messages', 'folders', 'attachments', 'config', 'config__open_relay', 'help'])
+    expect(result.tools).toHaveLength(5)
+    const names = result.tools.map((t: { name: string }) => t.name)
+    expect(names).toEqual(['messages', 'folders', 'attachments', 'config', 'help'])
   })
 
   it('declares outputSchema for every tool except help', async () => {
@@ -156,7 +155,7 @@ describe('ReadResourceRequestSchema handler', () => {
 })
 
 describe('CallToolRequestSchema handler - successful tool calls', () => {
-  it('clears the live account snapshot after a successful subject reset', async () => {
+  it('clears the live account snapshot after a successful config reset', async () => {
     const { handleConfig } = await import('./composite/config.js')
     const { folders } = await import('./composite/folders.js')
     vi.mocked(handleConfig).mockResolvedValue({
@@ -173,7 +172,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
       })
     } as any
     const accounts = [{ email: 'user@example.com' }] as any
-    registerTools(server, accounts, { clearSubjectCredentials: vi.fn() })
+    registerTools(server, accounts)
     const handler = handlers.get(CallToolRequestSchema)
 
     await handler({

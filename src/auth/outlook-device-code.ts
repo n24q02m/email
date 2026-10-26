@@ -1,6 +1,5 @@
 /**
- * Microsoft Outlook OAuth 2.0 Device Code upstream configuration for
- * `createDelegatedOAuthApp({flow:'device_code', upstream: ...})`.
+ * Microsoft Outlook OAuth 2.0 Device Code configuration.
  *
  * Scopes requested:
  *   - offline_access                                   -> refresh_token
@@ -11,8 +10,15 @@
  * M365 work/school directory can be targeted; the defaults here are unchanged
  * (`common`, full IMAP+SMTP grant).
  */
-import type { UpstreamOAuthConfig } from '@n24q02m/mcp-core'
 import { getOutlookScopes, getOutlookTenant } from '../tools/helpers/oauth2.js'
+
+export interface OutlookDeviceCodeConfig {
+  deviceAuthUrl: string
+  tokenUrl: string
+  clientId: string
+  scopes: string[]
+  pollIntervalMs: number
+}
 
 const UPSTREAM_DEFAULT_TENANT = 'common'
 const UPSTREAM_DEFAULT_SCOPES = [
@@ -21,7 +27,7 @@ const UPSTREAM_DEFAULT_SCOPES = [
   'https://outlook.office.com/SMTP.Send'
 ]
 
-export function buildOutlookUpstream(opts: { clientId: string }): UpstreamOAuthConfig {
+export function buildOutlookUpstream(opts: { clientId: string }): OutlookDeviceCodeConfig {
   const authBase = `https://login.microsoftonline.com/${getOutlookTenant(UPSTREAM_DEFAULT_TENANT)}/oauth2/v2.0`
   return {
     deviceAuthUrl: `${authBase}/devicecode`,

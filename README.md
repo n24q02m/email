@@ -5,7 +5,7 @@ mcp-name: io.github.n24q02m/better-email-mcp
 **IMAP/SMTP email for AI agents -- read, send, organize, and manage attachments across accounts.**
 
 <!-- Badge Row 1: Status -->
-[![Mode](https://img.shields.io/badge/mode-http_remote_relay_%C2%B7_http_local_relay_%C2%B7_stdio_proxy-5C6BC0)](https://mcp.n24q02m.com/get-started/modes-overview/)
+![Mode](https://img.shields.io/badge/mode-stdio_%C2%B7_http_bearer-5C6BC0)
 [![CI](https://github.com/n24q02m/email/actions/workflows/ci.yml/badge.svg)](https://github.com/n24q02m/email/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/n24q02m/email/graph/badge.svg?token=O2GWBWCZGF)](https://codecov.io/gh/n24q02m/email)
 [![npm](https://img.shields.io/npm/v/@n24q02m/email?logo=npm&logoColor=white)](https://www.npmjs.com/package/@n24q02m/email)
@@ -75,14 +75,14 @@ mcp-name: io.github.n24q02m/better-email-mcp
 
 - **Multi-account support** -- manage 6+ email accounts (Gmail, Outlook, Yahoo, iCloud, Zoho, ProtonMail, custom IMAP)
 - **App Passwords** -- no OAuth2 setup required for most providers; clone and run in 1 minute
-- **4 composite tools** with 23 actions (plus `help` + `config__open_relay`) -- search, read, send, reply, forward, organize, and credential setup in single calls
+- **4 composite tools** (plus `help`) -- search, read, send, reply, forward, organize, and credential status in single calls
 - **Auto-discovery** -- provider settings detected from email address, custom IMAP host supported
 - **Thread-aware** -- reply/forward maintains In-Reply-To and References headers
 - **Tiered token optimization** -- compressed descriptions + on-demand `help` tool + MCP Resources
 
 ## Install
 
-The server runs in two modes: **stdio** (default, single-user, credentials from env vars) and **HTTP** (opt-in, multi-user with OAuth 2.1). For stdio, add it to your MCP client config:
+The server runs in two modes: **stdio** (default, single-user, credentials from env vars) and **HTTP** (opt-in, single-user with a bearer token). For stdio, add it to your MCP client config:
 
 ```jsonc
 {
@@ -125,7 +125,7 @@ The package ships one binary, `email` (run via `npx @n24q02m/email`), also insta
 | Invocation | Description |
 |:-----------|:------------|
 | `email` | Start the MCP server over **stdio** (default). Reads credentials from `EMAIL_CREDENTIALS`, or from `EMAIL_USER` + `EMAIL_APP_PASSWORD` |
-| `email --http` | Start the server in **HTTP** (multi-user, OAuth 2.1) mode. Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
+| `email --http` | Start the server in **HTTP** (single-user, bearer token) mode. Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
 | `email auth [outlook] <email> [--client-id=<id>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.better-email-mcp/tokens.json`. The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
 | `email logout [<email>]` | Clear the locally stored Outlook token(s). Omit `<email>` to clear every stored token |
 
@@ -147,7 +147,7 @@ npx @n24q02m/email logout user@outlook.com
 
 ## Smithery
 
-Published with a [Smithery](https://smithery.ai) config ([`smithery.yaml`](smithery.yaml)). Smithery runs the server over **stdio** with no build config required; credentials are supplied at runtime through the server's own setup flow (see [Configuration](#configuration)). The start command is:
+Published with a [Smithery](https://smithery.ai) config ([`smithery.yaml`](smithery.yaml)). Smithery runs the server over **stdio** with no build config required; credentials come from the environment (see [Configuration](#configuration)). The start command is:
 
 ```yaml
 startCommand:
@@ -161,8 +161,6 @@ startCommand:
 Full docs at **[mcp.n24q02m.com/servers/better-email-mcp/](https://mcp.n24q02m.com/servers/better-email-mcp/)**:
 
 - [Setup](https://mcp.n24q02m.com/servers/better-email-mcp/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
-- [Modes overview](https://mcp.n24q02m.com/get-started/modes-overview/) -- stdio (default) and HTTP (opt-in, multi-user with OAuth 2.1)
-- [Multi-user setup](https://mcp.n24q02m.com/get-started/multi-user/) -- per-JWT-sub credential model
 
 **Install with AI agent** -- paste this to your AI coding agent:
 
@@ -187,8 +185,7 @@ surface. The old name is removed directly; there is no compatibility alias.
 | `messages` | `search`, `read`, `mark_read`, `mark_unread`, `flag`, `unflag`, `move`, `archive`, `trash`, `new`, `reply`, `forward` | Search, read, organize, compose, reply to, and forward emails |
 | `folders` | `list`, `status` | List mailbox folders or read targeted IMAP STATUS metadata |
 | `attachments` | `list`, `download` | List and download email attachments |
-| `config` | `status`, `setup_status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | Credential setup via browser relay, status check, reset, re-resolve, cache clear |
-| `config__open_relay` | - | Open the relay configuration form in the browser and return the relay URL |
+| `config` | `status`, `setup_status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | Credential status and setup guidance, reset, re-resolve, cache clear |
 | `help` | - | Get full documentation for any tool |
 
 ### MCP Resources
@@ -213,17 +210,18 @@ How email stacks up against direct competitors in each pillar:
 | Auto-discovery from email address | Yes | Yes (8 providers) | n/a (Gmail only) | No (manual host/port) |
 | Bundled Outlook OAuth (no user Azure app) | Yes (device-code, Thunderbird-pattern client) | partial (OAuth2 XOAUTH2, experimental) | No (user-supplied Google OAuth) | No |
 | Attachments (list + download) | Yes | Yes | Yes | Yes |
-| HTTP multi-user mode (per-JWT-sub) | Yes (OAuth 2.1, self-hostable) | No (stdio only) | No (stdio only) | No (stdio only) |
+| HTTP mode (single-user, bearer token; self-hostable) | Yes | No (stdio only) | No (stdio only) | No (stdio only) |
 
 ## Remote (HTTP Mode)
 
-Run as a multi-user HTTP server with OAuth 2.1 authentication:
+Run as a single-user HTTP server, authenticated with a shared bearer token:
 
 ```jsonc
 {
   "mcpServers": {
     "email": {
       "type": "http",
+      "headers": { "Authorization": "Bearer <your-token>" },
       "url": "https://<your-host>/mcp"
     }
   }
@@ -232,20 +230,20 @@ Run as a multi-user HTTP server with OAuth 2.1 authentication:
 
 ### Self-Hosting (HTTP Mode)
 
-Single multi-user mode (relay form for App-Password providers + bundled Outlook OAuth device-code):
+Single-user mode: one shared bearer token; accounts come from env vars or `email auth outlook <address>`:
 
 ```bash
-export CREDENTIAL_SECRET='replace-with-a-stable-secret'
+export EMAIL_MCP_TOKEN_HASH='scrypt$...'  # required: the container binds 0.0.0.0 and refuses to start without it
+export EMAIL_CREDENTIALS='you@gmail.com:app-password'
 docker run -p 8080:8080 \
   -e PORT=8080 \
-  -e PUBLIC_URL=https://your-domain.com \
-  -e MCP_STORAGE_BACKEND=local \
+  -e EMAIL_MCP_TOKEN_HASH \
+  -e EMAIL_CREDENTIALS \
   -e HOME=/data \
-  -e CREDENTIAL_SECRET="$CREDENTIAL_SECRET" \
   -v email-data:/data \
   n24q02m/email:latest
 ```
-Users provide their own email credentials through the OAuth flow / paste form. No server-side `EMAIL_CREDENTIALS` is needed. The stable `CREDENTIAL_SECRET` encrypts the local per-user credential files; the mounted `/data` volume survives container restarts. Without that volume, the container filesystem remains ephemeral.
+Mint the hash with `printf '%s' "$TOKEN" | email token hash`; the token is read from stdin, never argv. Clients send the raw token as `Authorization: Bearer <token>`. Saved Outlook tokens live under `/data/.better-email-mcp/` and persist when the `/data` volume is kept.
 
 ### Self-Hosting with Docker Compose
 
@@ -253,28 +251,22 @@ The repository ships `docker-compose.http.yml`, which builds the `http` image ta
 publishes it on host loopback only (`127.0.0.1:8082`):
 
 ```bash
-export CREDENTIAL_SECRET='replace-with-a-stable-secret'   # per-user vault key + deterministic EdDSA JWT signing (required)
-export MCP_RELAY_PASSWORD='replace-with-a-form-password'  # gate for the /authorize setup form
+export EMAIL_MCP_TOKEN_HASH='scrypt$...'   # required; see the note above
+export EMAIL_CREDENTIALS='you@gmail.com:app-password'
 docker compose -f docker-compose.http.yml up
 ```
 
-The server is then reachable at `http://localhost:8082`. To serve other machines, put your own
-TLS reverse proxy on the same host in front of the loopback port and set `PUBLIC_URL` to the
-public HTTPS origin. Prebuilt multi-arch images are published to Docker Hub (`n24q02m/email`)
+The server is then reachable at `http://localhost:8082`. To serve other machines, put your own TLS reverse proxy on the same host in front of the loopback port. Prebuilt multi-arch images are published to Docker Hub (`n24q02m/email`)
 and GHCR (`ghcr.io/n24q02m/email`).
 
-The JWT signing key is derived deterministically from `CREDENTIAL_SECRET` (EdDSA), so user
-identity stays stable across container recreation. Per-user credentials and Outlook tokens are
-keyed by JWT `sub`, so two users' Outlook accounts cannot collide.
+## Outlook OAuth Device Code
 
-## Outlook OAuth Device Code (HTTP mode)
+Outlook/Hotmail/Live accounts use OAuth2 device-code. Run `email auth outlook <address>` once. On first use:
 
-In HTTP mode, Outlook/Hotmail/Live accounts use OAuth2 device-code automatically. On first use:
-
-1. The server prints a device code and a Microsoft login URL
+1. The CLI prints a device code and a Microsoft login URL
 2. Open the URL in a browser and enter the code
 3. Sign in and authorize the app
-4. Tokens are persisted per JWT sub — in the encrypted local credential files (`$HOME/.better-email-mcp/subs/<sub>/config.json`) on a self-hosted HTTP deploy with a `/data` volume, in the local in-memory store otherwise, or in `~/.better-email-mcp/tokens.json` for single-user / stdio
+4. Tokens are saved to `~/.better-email-mcp/tokens.json` (created with mode 0600 on POSIX). In Docker that path is `/data/.better-email-mcp/tokens.json`.
 
 OAuth uses the bundled public Azure client (`d56f8c71-9f7c-43f4-9934-be29cb6e77b0`, Thunderbird-pattern) -- no user-side Azure registration needed.
 
@@ -289,10 +281,9 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `EMAIL_CREDENTIALS` | Yes (stdio) | - | Email credentials, `email:app-password` per account, comma-separated for multi-account. Optional custom IMAP host/port: `email:password:imap_host:imap_port` |
 | `EMAIL_USER` | Alternative (stdio, single-account) | - | Email address. Used with `EMAIL_APP_PASSWORD` as a per-field alternative to `EMAIL_CREDENTIALS`; merged into `EMAIL_CREDENTIALS` at boot |
 | `EMAIL_APP_PASSWORD` | Alternative (stdio, single-account) | - | App password (Gmail/Yahoo/iCloud) or Outlook App Password; used with `EMAIL_USER` |
-| `PUBLIC_URL` | No (http) | - | Server's public URL for relay / OAuth redirect links |
 | `PORT` | No | `0` (OS-assigned) | Server port (http mode); set explicitly (e.g. `8080`) to bind a fixed port |
 | `HOST` | No | - | Bind address (http mode) |
-| `MCP_AUTH_DISABLE` | No (http) | - | Set to `1` to skip Bearer JWT verification when behind an external auth gateway |
+| `EMAIL_MCP_TOKEN_HASH` | No (http; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. Without it, HTTP runs unauthenticated only on loopback |
 | `OUTLOOK_CLIENT_ID` | No | `d56f8c71-9f7c-43f4-9934-be29cb6e77b0` (bundled public client) | Override the bundled Azure AD public client for self-hosted Outlook OAuth2 (or `--client-id=<id>` on `auth`, which overrides this env var) |
 | `OUTLOOK_EMAIL` | No | - | Workaround when Microsoft device-code response omits the email field |
 | `OUTLOOK_TENANT` | No | `consumers` (stdio/CLI), `common` (http device-code) | Microsoft directory to sign in against, used for **both** the device-code and the token-refresh endpoint. Set `common` for a work/school (Entra ID) mailbox, or a tenant GUID / verified domain to pin one directory |
@@ -371,7 +362,7 @@ it with `OUTLOOK_SCOPES` so the refresh does not ask for more than was granted.
 
 - **Credential sanitization** -- Passwords never leaked in error messages
 - **App Passwords** -- Uses app-specific passwords, not regular passwords
-- **Token storage** -- Outlook OAuth tokens saved with 600 permissions
+- **Token storage** -- Outlook OAuth tokens are written with mode 0600 on POSIX (not enforced on Windows)
 - **IMAP validation** -- Search queries validated before execution
 
 ## Build from Source
@@ -385,12 +376,13 @@ bun run dev
 
 ## Trust Model
 
-This plugin implements **TC-NearZK**. Storage durability depends on the deployment mode; see the [mcp-core trust model](https://mcp.n24q02m.com/servers/mcp-core/trust-model/) for full classification.
+Credentials are single-user: whoever runs the server (or your OS user for stdio) can read them. Storage depends on the deployment mode:
 
 | Mode | Storage | Encryption | Who can read your data? |
 |---|---|---|---|
-| HTTP local Docker | Encrypted local files under `$HOME/.better-email-mcp/subs/<sub>/config.json` | AES-256-GCM | Server operator (admin = user) |
-| stdio | platformdirs `mcp` config dir (`config.enc`; e.g. `%APPDATA%\mcp\Config\config.enc` on Windows) | AES-GCM, machine-bound key | Only your OS user (file perm 0600) |
+| HTTP (Docker) | Env vars (`EMAIL_CREDENTIALS`) and saved Outlook tokens in `$HOME/.better-email-mcp/tokens.json` (the `/data` volume) | Tokens: plain JSON, POSIX file mode 0600 | Server operator |
+| stdio | Env vars; saved Outlook tokens in `~/.better-email-mcp/tokens.json`; legacy `config.enc` from earlier releases is still read | Tokens: plain JSON, POSIX file mode 0600 | Only your OS user |
+
 ## License
 
 Apache-2.0 -- See [LICENSE](LICENSE).

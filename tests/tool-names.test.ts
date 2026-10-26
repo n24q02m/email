@@ -5,7 +5,20 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { afterEach, describe, expect, it } from 'vitest'
 
-const EXPECTED_TOOLS = ['messages', 'folders', 'attachments', 'config', 'config__open_relay', 'help']
+function parseToolNames(raw: string): string[] {
+  const parsed: unknown = JSON.parse(raw)
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    'tools' in parsed &&
+    Array.isArray(parsed.tools) &&
+    parsed.tools.every((tool: unknown) => typeof tool === 'string')
+  ) {
+    return parsed.tools
+  }
+  throw new Error('tools_expected.json must contain a string[] "tools" field')
+}
+const EXPECTED_TOOLS = parseToolNames(readFileSync(new URL('./fixtures/tools_expected.json', import.meta.url), 'utf8'))
 const EXPECTED_RESOURCES = [
   'email://docs/messages',
   'email://docs/folders',

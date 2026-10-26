@@ -11,8 +11,7 @@ vi.mock('./composite/config.js', () => ({ handleConfig: vi.fn() }))
 vi.mock('./helpers/config.js', () => ({ loadConfig: vi.fn() }))
 
 vi.mock('../credential-state.js', () => ({
-  getState: vi.fn(() => 'configured'),
-  getSetupUrl: vi.fn(() => null)
+  getState: vi.fn(() => 'configured')
 }))
 
 vi.mock('./helpers/security.js', async (importOriginal) => {

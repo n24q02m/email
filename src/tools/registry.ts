@@ -1,10 +1,9 @@
 /**
- * Tool Registry - 6 Public Tools
+ * Tool Registry - 5 Public Tools
  * Consolidated registration for maximum coverage with minimal tools
  *
- * Credential-aware: when state is 'awaiting_setup', tools return setup
- * instructions with the relay URL instead of failing with cryptic errors.
- * The relay session is triggered lazily on first tool call.
+ * Credential-aware: when state is 'awaiting_setup', tools return instructions
+ * for supplying credentials (EMAIL_CREDENTIALS or the `email auth` CLI).
  */
 
 import { readFile } from 'node:fs/promises'
@@ -17,10 +16,9 @@ import {
   ListToolsRequestSchema,
   ReadResourceRequestSchema
 } from '@modelcontextprotocol/sdk/types.js'
-import { buildOpenRelayHandler } from '@n24q02m/mcp-core'
-import { getSetupUrl, getState } from '../credential-state.js'
+import { getState } from '../credential-state.js'
 import { type AttachmentsInput, attachments } from './composite/attachments.js'
-import { type ConfigHandlerOptions, type ConfigInput, handleConfig } from './composite/config.js'
+import { type ConfigInput, handleConfig } from './composite/config.js'
 import { type FoldersInput, folders } from './composite/folders.js'
 import { type MessagesInput, messages } from './composite/messages.js'
 // Import mega tools
@@ -49,7 +47,7 @@ const RESOURCES = [
 ]
 
 /**
- * 6 Tools covering full email operations
+ * 5 Tools covering full email operations
  * Compressed descriptions for token optimization
  */
 const TOOLS = [
@@ -194,7 +192,7 @@ const TOOLS = [
   {
     name: 'config',
     description:
-      'Manage email credential setup and runtime configuration.\n\nSetup actions (credential lifecycle):\n- status: Show current credential state, setup URL, and configured accounts\n- setup_status: Show credential state and setup URL only (no accounts list; cross-server parity action)\n- setup_start (-> force): Trigger relay setup session and return the setup URL. Set force=true to restart even if already in progress\n- setup_reset: Clear all saved credentials and reset to awaiting_setup state\n- setup_complete: Re-check credential state after external config changes (e.g. relay submission)\n\nRuntime actions:\n- set: Update runtime settings (email has no runtime settings; returns ok=false)\n- cache_clear: Clear in-memory account and OAuth token caches',
+      'Manage email credential setup and runtime configuration.\n\nSetup actions (credential lifecycle):\n- status: Show current credential state and configured accounts\n- setup_status: Show credential state only (no accounts list; cross-server parity action)\n- setup_start: Show how to supply credentials (EMAIL_CREDENTIALS env var or `email auth` CLI)\n- setup_reset: Clear stored credentials and reset to awaiting_setup state\n- setup_complete: Re-check credential state after credentials were supplied\n\nRuntime actions:\n- set: Update runtime settings (email has no runtime settings; returns ok=false)\n- cache_clear: Clear IMAP folder caches and the OAuth token cache',
     annotations: {
       title: 'Config',
       readOnlyHint: false,
@@ -209,28 +207,10 @@ const TOOLS = [
           type: 'string',
           enum: ['status', 'setup_status', 'setup_start', 'setup_reset', 'setup_complete', 'set', 'cache_clear'],
           description: 'Action to perform'
-        },
-        force: {
-          type: 'boolean',
-          description: 'Force restart relay setup even if already in progress (for setup_start action)'
         }
       },
       required: ['action']
     },
-    outputSchema: { type: 'object', additionalProperties: true }
-  },
-  {
-    name: 'config__open_relay',
-    description:
-      'Open the relay configuration form for better-email-mcp in the user browser. Returns the relay URL, whether the browser launched, and the current credential state.',
-    annotations: {
-      title: 'Open Relay',
-      readOnlyHint: false,
-      destructiveHint: false,
-      idempotentHint: false,
-      openWorldHint: true
-    },
-    inputSchema: { type: 'object', properties: {}, additionalProperties: false },
     outputSchema: { type: 'object', additionalProperties: true }
   },
   {
@@ -284,10 +264,6 @@ async function handleHelp(args: unknown): Promise<{ tool: string; documentation:
 
 type ToolHandler = (accounts: AccountConfig[], args: unknown) => Promise<unknown>
 
-export interface RegisterToolsOptions {
-  clearSubjectCredentials?: ConfigHandlerOptions['clearSubjectCredentials']
-}
-
 const TOOL_HANDLERS: Record<string, ToolHandler> = {
   messages: (accounts, args) => messages(accounts, args as unknown as MessagesInput),
   folders: (accounts, args) => folders(accounts, args as unknown as FoldersInput),
@@ -306,13 +282,9 @@ const AVAILABLE_RESOURCE_URIS_STRING = RESOURCES.map((r) => r.uri).join(', ')
 const VALID_TOOL_NAMES = TOOLS.map((t) => t.name)
 const AVAILABLE_TOOLS_STRING = VALID_TOOL_NAMES.join(', ')
 
-export function registerTools(server: Server, initialAccounts: AccountConfig[], options: RegisterToolsOptions = {}) {
-  // Mutable reference: updated via hot-reload when relay credentials arrive after startup
+export function registerTools(server: Server, initialAccounts: AccountConfig[]) {
+  // Mutable reference: updated when credentials are saved after startup
   let accounts = initialAccounts
-  const openRelayHandler = buildOpenRelayHandler({
-    serverName: 'better-email-mcp',
-    publicUrl: process.env.PUBLIC_URL ?? null
-  })
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
     tools: TOOLS
   }))
@@ -356,17 +328,6 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[], 
     }
 
     try {
-      // config__open_relay is handled directly via buildOpenRelayHandler — it does
-      // not depend on configured accounts, takes no args, and returns its own JSON
-      // shape (url, browserOpened, status, etc.).
-      if (name === 'config__open_relay') {
-        const result = await openRelayHandler()
-        return {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          structuredContent: result as unknown as Record<string, unknown>
-        }
-      }
-
       const handler = TOOL_HANDLERS[name]
       if (!handler) {
         const closest = findClosestMatch(name, VALID_TOOL_NAMES)
@@ -379,41 +340,32 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[], 
       }
 
       // Credential guard: when not configured, return setup instructions.
-      // Help, config, and config__open_relay tools are always available (docs don't
-      // need credentials; config and config__open_relay manage the credential
-      // lifecycle itself). In stdio mode, missing creds are caught up-front in
-      // init-server.ts (process.exit(1)). In HTTP mode, the /authorize relay
-      // form runs in the same process — the user opens it via config__open_relay.
-      if (name !== 'help' && name !== 'config' && name !== 'config__open_relay' && accounts.length === 0) {
+      // Help and config manage the credential lifecycle themselves (docs need no credentials).
+      // In stdio mode, missing creds are caught up-front in init-server.ts (process.exit(1)).
+      if (name !== 'help' && name !== 'config' && accounts.length === 0) {
         const credState = getState()
         if (credState === 'configured') {
-          // Hot-reload: relay delivered credentials after startup — reload accounts
+          // Credentials were saved after startup (e.g. `email auth`): reload accounts
           accounts = await loadConfig()
         } else {
-          const url = getSetupUrl()
-          const setupInstructions = url
-            ? `Email credentials are not configured yet.\n\nTo set up, open this URL in your browser:\n${url}\n\nAfter submitting credentials on the relay page, retry this tool call.`
-            : `Email credentials are not configured.\n\nIn stdio mode: set EMAIL_PROVIDER + EMAIL_USER + EMAIL_APP_PASSWORD env vars.\nIn HTTP mode: call config__open_relay to open the /authorize browser form.`
           return {
-            content: [{ type: 'text', text: setupInstructions }],
+            content: [
+              {
+                type: 'text',
+                text: 'Email credentials are not configured.\n\nSet EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD), or run `email auth outlook <address>` for Outlook.'
+              }
+            ],
             isError: true
           }
         }
       }
 
       const configInput = name === 'config' ? (args as unknown as ConfigInput) : undefined
-      const result =
-        name === 'config'
-          ? await handleConfig(accounts, configInput!, {
-              clearSubjectCredentials: options.clearSubjectCredentials
-            })
-          : await handler(accounts, args)
+      const result = await handler(accounts, args)
 
-      // A server instance is reused for every MCP request in one session. The
-      // subject-scoped account list is therefore a request-local snapshot, not
-      // a live KV view. After a successful reset, clear that snapshot as well
-      // as the durable store so the next tool call in the same session cannot
-      // continue using credentials that were just deleted.
+      // A server instance is reused for every MCP request in one session. After a
+      // successful reset, clear the in-memory account snapshot as well as the
+      // durable store so the next tool call cannot continue with deleted credentials.
       if (configInput?.action === 'setup_reset') {
         accounts.length = 0
       }

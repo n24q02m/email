@@ -17,7 +17,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 /** Every tool the registry exposes (`src/tools/registry.ts` TOOLS). */
-const EXPECTED_TOOLS = ['messages', 'folders', 'attachments', 'config', 'config__open_relay', 'help']
+const EXPECTED_TOOLS = ['messages', 'folders', 'attachments', 'config', 'help']
 
 /** Tools carrying their own documentation resource (`email://docs/<name>`). */
 const DOCUMENTED_TOOLS = ['messages', 'folders', 'attachments', 'config', 'help']

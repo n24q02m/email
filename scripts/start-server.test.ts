@@ -1,7 +1,7 @@
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { PerPluginStore, setHomeDirForTesting } from '@n24q02m/mcp-core/storage'
+import { PerPluginStore, setHomeDirForTesting } from '@n24q02m/hull/storage'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAuth, runLogout } from '../src/auth-cli.js'
 import { initServer } from '../src/init-server.js'
@@ -65,6 +65,17 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     expect(runLogout).toHaveBeenCalled()
     expect(initServer).not.toHaveBeenCalled()
     expect(process.exit).toHaveBeenCalledWith(0)
+  })
+
+  it('refuses the removed "relay" subcommand with exit 2 and a pointer to auth', async () => {
+    process.argv.push('relay')
+
+    await import('./start-server.js')
+    await vi.waitFor(() => expect(process.exit).toHaveBeenCalledWith(2))
+
+    expect(console.error).toHaveBeenCalledWith('relay was removed; run `email auth` (see README)')
+    expect(runAuth).not.toHaveBeenCalled()
+    expect(initServer).not.toHaveBeenCalled()
   })
 
   it('starts the server and registers SIGINT/SIGTERM when no subcommand is given', async () => {
