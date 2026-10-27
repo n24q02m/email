@@ -2,6 +2,67 @@
 
 <!-- version list -->
 
+## v1.42.0-beta.1 (2026-10-27)
+
+### Bug Fixes
+
+- Align registry and plugin metadata with renamed identity
+  ([#1200](https://github.com/n24q02m/email/pull/1200),
+  [`144a980`](https://github.com/n24q02m/email/commit/144a9807635c3d88faedcdaa7ae5896750bdb331))
+
+- Point homepage at docs.n24q02m.com/servers/email/
+  ([#1201](https://github.com/n24q02m/email/pull/1201),
+  [`f52a503`](https://github.com/n24q02m/email/commit/f52a503c02f7712d53f68c01a7b833671df450a7))
+
+- Refuse removed relay subcommand in CLI ([#1202](https://github.com/n24q02m/email/pull/1202),
+  [`c038f62`](https://github.com/n24q02m/email/commit/c038f62b731933adc9fef6dcc9c0b69174875d0a))
+
+- Report the package version in HTTP serverInfo
+  ([#1202](https://github.com/n24q02m/email/pull/1202),
+  [`c038f62`](https://github.com/n24q02m/email/commit/c038f62b731933adc9fef6dcc9c0b69174875d0a))
+
+### Chores
+
+- Bump mcp-core to 1.24.3 (backlog disposition pre-archive, user 2026-09-13)
+  ([`6a6a77c`](https://github.com/n24q02m/email/commit/6a6a77ce0ba4177ee073e9856bd7537b29cdbe14))
+
+### Documentation
+
+- Add mode badge, install matrix, fix action count, CD-managed deployment note
+  ([#1194](https://github.com/n24q02m/email/pull/1194),
+  [`4421f65`](https://github.com/n24q02m/email/commit/4421f65fc97bb74d792f1759a7a5f30ef8ae53e0))
+
+- Align mode badge with fleet standard (label 'mode', color 5C6BC0)
+  ([`b5fdc2c`](https://github.com/n24q02m/email/commit/b5fdc2ce6b65e7de11777cfd4d18eeaa3eabbb5f))
+
+- Archival notice — repo no longer maintained (2026-09-13)
+  ([#1196](https://github.com/n24q02m/email/pull/1196),
+  [`07d07b5`](https://github.com/n24q02m/email/commit/07d07b51aa1ec3f3be28600aa50417c42b135bb0))
+
+### Features
+
+- Make cd dispatch-only, add renovate minimum release age and repo settings contract
+  ([#1197](https://github.com/n24q02m/email/pull/1197),
+  [`915b99b`](https://github.com/n24q02m/email/commit/915b99b520fc2360d2a2582a98b7dff62c0c6074))
+
+- Move email MCP onto hull 0.4 and drop mcp-core relay
+  ([#1202](https://github.com/n24q02m/email/pull/1202),
+  [`c038f62`](https://github.com/n24q02m/email/commit/c038f62b731933adc9fef6dcc9c0b69174875d0a))
+
+- Remove cloudflare worker hosting surface ([#1199](https://github.com/n24q02m/email/pull/1199),
+  [`7cf7ebc`](https://github.com/n24q02m/email/commit/7cf7ebc9d46c8a904a51464871c357cf1b91abd9))
+
+- Rename identity to email (npm @n24q02m/email, image n24q02m/email)
+  ([#1198](https://github.com/n24q02m/email/pull/1198),
+  [`fd3d1b9`](https://github.com/n24q02m/email/commit/fd3d1b9328c775380381e337f21efe08bd753592))
+
+### Testing
+
+- Bump mcp-core stable-allowlist expectation to verified 1.24.3 (follows dep bump, backlog
+  disposition pre-archive)
+  ([`c9b9119`](https://github.com/n24q02m/email/commit/c9b9119216576fd078df8327bc667bda6a5beb0a))
+
+
 ## v1.41.5 (2026-09-13)
 
 ### Bug Fixes
