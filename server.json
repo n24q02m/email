@@ -6,12 +6,12 @@
     "url": "https://github.com/n24q02m/email.git",
     "source": "github"
   },
-  "version": "1.42.0-beta.1",
+  "version": "1.42.0",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@n24q02m/email",
-      "version": "1.42.0-beta.1",
+      "version": "1.42.0",
       "runtimeHint": "npx",
       "transport": {
         "type": "stdio"
