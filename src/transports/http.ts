@@ -68,8 +68,6 @@ export async function startHttp(): Promise<void> {
     serverName: SERVER_NAME,
     port,
     host,
-    // No setup page exists in token mode, so there is no URL to open.
-    openBrowser: false,
     auth
   }
   const handle = await runHttpServer(serverFactory, options)

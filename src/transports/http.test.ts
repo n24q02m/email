@@ -26,7 +26,7 @@ vi.mock('../tools/registry.js', () => ({
 
 import { resolveHttpAuth, startHttp, TOKEN_HASH_ENV } from './http.js'
 
-const ALLOWED_OPTION_KEYS = ['auth', 'host', 'openBrowser', 'port', 'serverName']
+const ALLOWED_OPTION_KEYS = ['auth', 'host', 'port', 'serverName']
 
 let savedEnv: Record<string, string | undefined>
 
@@ -92,7 +92,6 @@ describe('startHttp', () => {
       serverName: 'email',
       host: '127.0.0.1',
       port: 4321,
-      openBrowser: false,
       auth: { mode: 'token', tokenHash: TEST_TOKEN_HASH }
     })
 
