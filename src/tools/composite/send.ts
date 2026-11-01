@@ -15,16 +15,16 @@ import { forwardEmail, replyToEmail, sendNewEmail } from '../helpers/smtp-client
  * IMAP APPEND on these would create duplicates.
  * - Gmail: smtp.gmail.com
  * - Yahoo: smtp.mail.yahoo.com
- * - iCloud: smtp.mail.me.com
+ * iCloud (smtp.mail.me.com) does not, so it gets an APPEND like any other provider.
  */
 function autoSavesToSent(account: AccountConfig): boolean {
   const host = account.smtp.host
-  return host.includes('gmail') || host.includes('yahoo') || host.includes('mail.me')
+  return host.includes('gmail') || host.includes('yahoo')
 }
 
 /**
  * Best-effort save to Sent folder via IMAP APPEND.
- * Skips providers that auto-save (Gmail, Yahoo, iCloud).
+ * Skips providers that auto-save (Gmail, Yahoo).
  * Failures are silent — sending already succeeded.
  */
 async function saveToSent(account: AccountConfig, result: SendResult): Promise<boolean> {

@@ -454,12 +454,13 @@ describe('send - save to sent', () => {
     expect(mockAppendToFolder).not.toHaveBeenCalled()
   })
 
-  it('skips save-to-sent for iCloud (auto-saves)', async () => {
+  it('saves to sent for iCloud (its SMTP does not auto-save)', async () => {
     mockSendNewEmail.mockResolvedValue({
       success: true,
       message_id: '<new@icloud.com>',
       raw: Buffer.from('raw-email')
     })
+    mockResolveSentFolder.mockResolvedValue('Sent Messages')
 
     const result = await send(icloudAccounts, {
       action: 'new',
@@ -469,8 +470,8 @@ describe('send - save to sent', () => {
       body: 'B'
     })
 
-    expect(result.saved_to_sent).toBe(false)
-    expect(mockAppendToFolder).not.toHaveBeenCalled()
+    expect(result.saved_to_sent).toBe(true)
+    expect(mockAppendToFolder).toHaveBeenCalledWith(icloudAccounts[0], 'Sent Messages', expect.any(Buffer), ['\\Seen'])
   })
 
   it('saves to Sent folder for non-Gmail providers', async () => {
