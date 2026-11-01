@@ -101,6 +101,9 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Test SessionStart hook
+        run: uv run --with pytest==9.0.3 python -m pytest hooks/tests -q
+
       - name: Run Biome check
         run: bun run check
 
