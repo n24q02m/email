@@ -29,6 +29,26 @@ class TestCheckCredentials(unittest.TestCase):
         mock_exists.side_effect = lambda p: p == "/home/user/.config/mcp/config.enc"
         self.assertTrue(check_credentials._is_configured())
 
+    @patch.dict(
+        os.environ, {"EMAIL_USER": "a@b.c", "EMAIL_APP_PASSWORD": "pw"}, clear=True
+    )
+    def test_is_configured_user_and_app_password(self):
+        self.assertTrue(check_credentials._is_configured())
+
+    @patch.dict(os.environ, {"EMAIL_USER": "a@b.c"}, clear=True)
+    @patch("os.path.exists", return_value=False)
+    def test_user_without_app_password_not_configured(self, mock_exists):
+        self.assertFalse(check_credentials._is_configured())
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_is_configured_outlook_tokens(self, mock_expanduser, mock_exists):
+        mock_expanduser.return_value = "/home/user"
+        # Tokens saved by `email auth outlook` live in ~/.better-email-mcp/tokens.json
+        mock_exists.side_effect = lambda p: p == "/home/user/.better-email-mcp/tokens.json"
+        self.assertTrue(check_credentials._is_configured())
+
     @patch.dict(os.environ, {}, clear=True)
     @patch("os.path.exists")
     def test_not_configured(self, mock_exists):
