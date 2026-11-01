@@ -81,13 +81,13 @@
     "@types/html-to-text": "^9.0.4",
     "@types/mailparser": "^3.4.6",
     "@types/node": "^26.4.1",
-    "@types/nodemailer": "^8.0.1",
-    "@types/sanitize-html": "^2.16.1",
-    "@vitest/coverage-v8": "^5.0.0",
+    "@types/nodemailer": "^8.0.2",
+    "@types/sanitize-html": "^2.16.2",
+    "@vitest/coverage-v8": "^5.0.5",
     "esbuild": "^0.28.2",
-    "tsx": "^4.23.13",
+    "tsx": "^4.23.15",
     "typescript": "^7.0.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.5"
   },
   "description": "IMAP/SMTP email for AI agents -- read, send, organize, and manage attachments across accounts.",
   "main": "build/src/init-server.js",
