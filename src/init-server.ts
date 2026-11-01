@@ -79,7 +79,7 @@ Options:
 
   2. Switch to HTTP mode (single-user bearer token): set EMAIL_MCP_TOKEN_HASH (mint with: printf '%s' "$TOKEN" | email token hash), or run: email auth outlook <address>
 
-Documentation: https://mcp.n24q02m.com/servers/better-email-mcp/
+Documentation: https://docs.n24q02m.com/servers/email/
 `
     process.stderr.write(msg)
     process.exit(1)

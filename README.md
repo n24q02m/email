@@ -116,7 +116,7 @@ Most providers use an **App Password** (no OAuth setup); Outlook/Hotmail/Live us
 | OpenCode | `mcpServers` block in `opencode.json` |
 | Cursor / Windsurf / Gemini CLI / any MCP client | `mcpServers` JSON in the client's config — same shape as the example above |
 
-Full per-client walkthroughs: [mcp.n24q02m.com/servers/better-email-mcp/setup/](https://mcp.n24q02m.com/servers/better-email-mcp/setup/).
+Full per-client walkthroughs: [docs.n24q02m.com/servers/email/setup/](https://docs.n24q02m.com/servers/email/setup/).
 
 ## CLI
 
@@ -158,9 +158,9 @@ startCommand:
 
 ## Documentation
 
-Full docs at **[mcp.n24q02m.com/servers/better-email-mcp/](https://mcp.n24q02m.com/servers/better-email-mcp/)**:
+Full docs at **[docs.n24q02m.com/servers/email/](https://docs.n24q02m.com/servers/email/)**:
 
-- [Setup](https://mcp.n24q02m.com/servers/better-email-mcp/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
+- [Setup](https://docs.n24q02m.com/servers/email/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
 
 **Install with AI agent** -- paste this to your AI coding agent:
 
