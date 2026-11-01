@@ -2,7 +2,7 @@
   "hooks": {
     "PreToolUse": [
       {
-        "matcher": "mcp__plugin_better-email-mcp_better-email-mcp__",
+        "matcher": "mcp__plugin_email_email__",
         "hooks": [
           {
             "type": "command",
