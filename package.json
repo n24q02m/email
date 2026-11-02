@@ -79,8 +79,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.6.3",
     "@types/html-to-text": "^9.0.4",
-    "@types/mailparser": "^3.4.6",
-    "@types/node": "^26.4.1",
+    "@types/mailparser": "^3.9.0",
+    "@types/node": "^26.6.5",
     "@types/nodemailer": "^8.0.2",
     "@types/sanitize-html": "^2.16.2",
     "@vitest/coverage-v8": "^5.0.5",
