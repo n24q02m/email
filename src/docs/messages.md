@@ -135,7 +135,7 @@ Forward an email. The original body is appended with a separator.
 ## Outbound response and provider behavior
 
 - `saved_to_sent` reports whether the sent message was saved to the Sent folder via IMAP APPEND.
-- Gmail, Yahoo, and iCloud auto-save sent messages, so IMAP APPEND is skipped.
+- Gmail and Yahoo auto-save sent messages, so IMAP APPEND is skipped. iCloud does not, so it is appended like any other provider.
 - Outlook, Zoho, Fastmail, and other providers use best-effort IMAP APPEND.
 - Outlook.com/Hotmail/Live accounts use OAuth2 automatically; the first use may return a sign-in link and code, and tokens refresh silently.
 - Reply subjects are prefixed with `Re:` when needed; forward subjects are prefixed with `Fwd:` when needed.
