@@ -23,6 +23,7 @@ import { type FoldersInput, folders } from './composite/folders.js'
 import { type MessagesInput, messages } from './composite/messages.js'
 // Import mega tools
 import { type AccountConfig, loadConfig } from './helpers/config.js'
+import { isDraftOnly, restrictTool } from './helpers/draft-only.js'
 import { aiReadableMessage, EmailMCPError, enhanceError, findClosestMatch } from './helpers/errors.js'
 import { isValidToolName, markStructuredContent, wrapToolResult } from './helpers/security.js'
 
@@ -54,7 +55,7 @@ const TOOLS = [
   {
     name: 'messages',
     description:
-      'Search, read, manage, compose, and send email messages.\n\nActions (required params -> optional):\n- search (-> account, query="UNSEEN", folder="INBOX", limit=20)\n- read (account, uid -> folder, preview, max_chars)\n- mark_read / mark_unread / flag / unflag (account, uid|uids -> folder)\n- move (account, uid|uids, destination -> folder)\n- archive / trash (account, uid|uids -> folder)\n- new (account, to, subject, body -> cc, bcc, attachments)\n- reply (account, uid, body -> to, folder, attachments)\n- forward (account, uid, to, body -> folder, attachments)\n\nRead preview mode returns at most max_chars (default 4000) and includes truncation metadata; omit preview for the full body.\n\nQuery examples: "UNREAD", "FROM user@example.com", "SINCE 2026-01-01", "UNREAD FROM boss@company.com". Date format MUST be YYYY-MM-DD.\n\nOutbound bodies support plain text or HTML. Attachments use base64 content, max 10 files and 25MB decoded total.',
+      'Search, read, manage, compose, and send email messages.\n\nActions (required params -> optional):\n- search (-> account, query="UNSEEN", folder="INBOX", limit=20)\n- read (account, uid -> folder, preview, max_chars)\n- mark_read / mark_unread / flag / unflag (account, uid|uids -> folder)\n- move (account, uid|uids, destination -> folder)\n- archive / trash (account, uid|uids -> folder)\n- new (account, to, subject, body -> cc, bcc, attachments, draft)\n- reply (account, uid, body -> to, folder, attachments, draft)\n- forward (account, uid, to, body -> folder, attachments, draft)\n\nRead preview mode returns at most max_chars (default 4000) and includes truncation metadata; omit preview for the full body.\n\nQuery examples: "UNREAD", "FROM user@example.com", "SINCE 2026-01-01", "UNREAD FROM boss@company.com". Date format MUST be YYYY-MM-DD.\n\nOutbound bodies support plain text or HTML. Attachments use base64 content, max 10 files and 25MB decoded total.',
     annotations: {
       title: 'Messages',
       readOnlyHint: false,
@@ -111,6 +112,10 @@ const TOOLS = [
         },
         cc: { type: 'string', description: 'CC recipients (comma-separated)' },
         bcc: { type: 'string', description: 'BCC recipients (comma-separated)' },
+        draft: {
+          type: 'boolean',
+          description: 'new/reply/forward: save the message to the Drafts folder instead of sending it'
+        },
         attachments: {
           type: 'array',
           description: 'File attachments to include (optional). Max 10 files, total decoded size <= 25MB.',
@@ -286,7 +291,7 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[]) 
   // Mutable reference: updated when credentials are saved after startup
   let accounts = initialAccounts
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: TOOLS
+    tools: isDraftOnly() ? TOOLS.map(restrictTool) : TOOLS
   }))
 
   // Resources handlers for full documentation

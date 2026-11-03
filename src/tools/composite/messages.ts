@@ -5,6 +5,7 @@
 
 import type { AccountConfig } from '../helpers/config.js'
 import { resolveAccounts, resolveSingleAccount } from '../helpers/config.js'
+import { refuseInDraftOnly } from '../helpers/draft-only.js'
 import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
 import { listFolders, modifyFlags, moveEmails, readEmail, searchEmails, trashEmails } from '../helpers/imap-client.js'
 import { type SendInput, send } from './send.js'
@@ -64,6 +65,7 @@ export interface MessagesInput {
  */
 export async function messages(accounts: AccountConfig[], input: MessagesInput): Promise<any> {
   return withErrorHandling(async () => {
+    refuseInDraftOnly('messages', input.action)
     switch (input.action) {
       case 'new':
       case 'reply':

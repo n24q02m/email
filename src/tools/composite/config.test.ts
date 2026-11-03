@@ -14,7 +14,8 @@ vi.mock('./messages.js', () => ({
 }))
 
 vi.mock('../helpers/imap-client.js', () => ({
-  clearSentFolderCache: vi.fn().mockReturnValue(1)
+  clearSentFolderCache: vi.fn().mockReturnValue(1),
+  clearDraftsFolderCache: vi.fn().mockReturnValue(0)
 }))
 
 vi.mock('../helpers/oauth2.js', () => ({
