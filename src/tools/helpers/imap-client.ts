@@ -165,9 +165,9 @@ const RE_WHITESPACE = /\s+/g
 // in this frequently executed query parsing hot path.
 const DATE_KEYWORDS = ['SINCE', 'BEFORE'] as const
 const KV_KEYWORDS = ['FROM', 'TO'] as const
-const UID_SEARCH_WINDOW_SIZE = 500
+const INITIAL_UID_SEARCH_WINDOW_SIZE = 500
+const MAX_UID_SEARCH_WINDOW_SIZE = 50_000
 const RE_UID_SEQUENCE_SET = /^\d+(?::\d+)?(?:,\d+(?::\d+)?)*$/
-
 function setSearchCriterion<K extends keyof SearchObject>(
   criteria: SearchObject,
   key: K,
@@ -328,8 +328,9 @@ async function searchNewestUidsInBoundedWindows(
 
   const selectedUids: number[] = []
   const seenUids = new Set<number>()
-  for (let high = uidNext - 1; high >= 1 && selectedUids.length < limit; high -= UID_SEARCH_WINDOW_SIZE) {
-    const low = Math.max(1, high - UID_SEARCH_WINDOW_SIZE + 1)
+  let currentWindowSize = INITIAL_UID_SEARCH_WINDOW_SIZE
+  for (let high = uidNext - 1; high >= 1 && selectedUids.length < limit; ) {
+    const low = Math.max(1, high - currentWindowSize + 1)
     const searchResult = await client.search({ ...criteria, uid: `${low}:${high}` }, { uid: true })
 
     if (searchResult === false) throw new Error('IMAP UID SEARCH returned no result')
@@ -343,8 +344,10 @@ async function searchNewestUidsInBoundedWindows(
 
     selectedUids.sort((left, right) => left - right)
     if (selectedUids.length > limit) selectedUids.splice(0, selectedUids.length - limit)
-  }
 
+    high = low - 1
+    currentWindowSize = Math.min(MAX_UID_SEARCH_WINDOW_SIZE, currentWindowSize * 2)
+  }
   return selectedUids
 }
 

@@ -230,12 +230,12 @@ describe('searchEmails large mailbox', () => {
   it('continues through multiple bounded UID windows when each window has sparse matches', async () => {
     const windowMatches: Record<string, number[]> = {
       '9502:10001': [9999, 10001],
-      '9002:9501': [9002, 9300, 9501],
-      '8502:9001': Array.from({ length: 15 }, (_, index) => 8502 + index)
+      '8502:9501': [9002, 9300, 9501],
+      '6502:8501': Array.from({ length: 15 }, (_, index) => 8487 + index)
     }
     const expectedUids = [
-      ...windowMatches['8502:9001']!,
-      ...windowMatches['9002:9501']!,
+      ...windowMatches['6502:8501']!,
+      ...windowMatches['8502:9501']!,
       ...windowMatches['9502:10001']!
     ]
 
@@ -262,8 +262,8 @@ describe('searchEmails large mailbox', () => {
     expect(fakeMailbox.search).toHaveBeenCalledTimes(3)
     expect(fakeMailbox.search.mock.calls.map(([criteria]) => (criteria as { uid: string }).uid)).toEqual([
       '9502:10001',
-      '9002:9501',
-      '8502:9001'
+      '8502:9501',
+      '6502:8501'
     ])
   })
 
