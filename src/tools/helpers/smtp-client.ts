@@ -147,6 +147,12 @@ async function buildRawMessage(mailOptions: {
   return composer.compile().build()
 }
 
+/** The Message-ID header MailComposer put in a raw message (used when it is not sent). */
+function messageIdOf(raw: Buffer): string {
+  const head = raw.subarray(0, raw.indexOf('\r\n\r\n') + 1 || raw.length).toString()
+  return /^Message-ID:\s*(\S+)/im.exec(head)?.[1] ?? ''
+}
+
 /**
  * Collect all recipient addresses for the SMTP envelope.
  * When sending raw messages, Nodemailer doesn't parse headers —
@@ -193,7 +199,11 @@ async function sendRawMessage(
 /**
  * Send a new email
  */
-export async function sendNewEmail(account: AccountConfig, options: SendEmailOptions): Promise<SendResult> {
+export async function sendNewEmail(
+  account: AccountConfig,
+  options: SendEmailOptions,
+  deliver = true
+): Promise<SendResult> {
   validateAttachments(options.attachments)
   const attachments = mapAttachments(options.attachments)
 
@@ -210,6 +220,7 @@ export async function sendNewEmail(account: AccountConfig, options: SendEmailOpt
 
   const raw = await buildRawMessage(mailOptions)
   const recipients = collectRecipients(options.to, options.cc, options.bcc)
+  if (!deliver) return { success: true, message_id: messageIdOf(raw), raw }
   const result = await sendRawMessage(account, raw, { from: account.email, to: recipients })
 
   return {
@@ -222,7 +233,11 @@ export async function sendNewEmail(account: AccountConfig, options: SendEmailOpt
 /**
  * Reply to an email (maintains thread via In-Reply-To and References headers)
  */
-export async function replyToEmail(account: AccountConfig, options: SendEmailOptions): Promise<SendResult> {
+export async function replyToEmail(
+  account: AccountConfig,
+  options: SendEmailOptions,
+  deliver = true
+): Promise<SendResult> {
   if (!options.in_reply_to) {
     throw new EmailMCPError(
       'in_reply_to is required for reply',
@@ -251,6 +266,7 @@ export async function replyToEmail(account: AccountConfig, options: SendEmailOpt
 
   const raw = await buildRawMessage(mailOptions)
   const recipients = collectRecipients(options.to, options.cc, options.bcc)
+  if (!deliver) return { success: true, message_id: messageIdOf(raw), raw }
   const result = await sendRawMessage(account, raw, { from: account.email, to: recipients })
 
   return {
@@ -265,7 +281,8 @@ export async function replyToEmail(account: AccountConfig, options: SendEmailOpt
  */
 export async function forwardEmail(
   account: AccountConfig,
-  options: SendEmailOptions & { original_body: string }
+  options: SendEmailOptions & { original_body: string },
+  deliver = true
 ): Promise<SendResult> {
   validateAttachments(options.attachments)
   const attachments = mapAttachments(options.attachments)
@@ -286,6 +303,7 @@ export async function forwardEmail(
 
   const raw = await buildRawMessage(mailOptions)
   const recipients = collectRecipients(options.to, options.cc, options.bcc)
+  if (!deliver) return { success: true, message_id: messageIdOf(raw), raw }
   const result = await sendRawMessage(account, raw, { from: account.email, to: recipients })
 
   return {

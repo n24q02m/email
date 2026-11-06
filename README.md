@@ -284,6 +284,7 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `PORT` | No | `0` (OS-assigned) | Server port (http mode); set explicitly (e.g. `8080`) to bind a fixed port |
 | `HOST` | No | - | Bind address (http mode) |
 | `EMAIL_MCP_TOKEN_HASH` | No (http; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. Without it, HTTP runs unauthenticated only on loopback |
+| `EMAIL_MCP_DRAFT_ONLY` | No | - | Set to `1` for agents that read untrusted mail: every `new`/`reply`/`forward` is saved to the account's Drafts folder instead of being sent (as if called with `draft: true`), and `move`/`archive`/`trash`/`setup_reset` are removed from the tool list (and refused if called anyway). Search, read and flag changes still work |
 | `OUTLOOK_CLIENT_ID` | No | `d56f8c71-9f7c-43f4-9934-be29cb6e77b0` (bundled public client) | Override the bundled Azure AD public client for self-hosted Outlook OAuth2 (or `--client-id=<id>` on `auth`, which overrides this env var) |
 | `OUTLOOK_EMAIL` | No | - | Workaround when Microsoft device-code response omits the email field |
 | `OUTLOOK_TENANT` | No | `consumers` (stdio/CLI), `common` (http device-code) | Microsoft directory to sign in against, used for **both** the device-code and the token-refresh endpoint. Set `common` for a work/school (Entra ID) mailbox, or a tenant GUID / verified domain to pin one directory |

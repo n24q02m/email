@@ -5,8 +5,9 @@
 
 import type { AccountConfig } from '../helpers/config.js'
 import { resolveSingleAccount } from '../helpers/config.js'
+import { isDraftOnly } from '../helpers/draft-only.js'
 import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
-import { appendToFolder, readEmail, resolveSentFolder } from '../helpers/imap-client.js'
+import { appendToFolder, readEmail, resolveDraftsFolder, resolveSentFolder } from '../helpers/imap-client.js'
 import type { EmailAttachment, SendResult } from '../helpers/smtp-client.js'
 import { forwardEmail, replyToEmail, sendNewEmail } from '../helpers/smtp-client.js'
 
@@ -37,6 +38,26 @@ async function saveToSent(account: AccountConfig, result: SendResult): Promise<b
   }
 }
 
+/** Save instead of send: asked for with `draft: true`, or forced by draft-only mode. */
+function asDraft(input: SendInput): boolean {
+  return input.draft === true || isDraftOnly()
+}
+
+/**
+ * After composing: a draft was not sent, so file it in Drafts (failing loudly if that fails);
+ * a sent message gets its best-effort copy in Sent.
+ */
+async function finish(account: AccountConfig, result: SendResult, draft: boolean): Promise<Record<string, unknown>> {
+  if (!draft) return { saved_to_sent: await saveToSent(account, result) }
+  if (!result.raw) throw new EmailMCPError('could not compose the draft', 'DRAFT_FAILED')
+  const drafts_folder = await resolveDraftsFolder(account)
+  const saved = await appendToFolder(account, drafts_folder, result.raw, ['\\Draft', '\\Seen'])
+  if (!saved) {
+    throw new EmailMCPError(`could not save the draft to ${drafts_folder}`, 'DRAFT_FAILED', 'Nothing was sent.')
+  }
+  return { sent: false, saved_to_drafts: true, drafts_folder }
+}
+
 export interface SendInput {
   action: 'new' | 'reply' | 'forward'
 
@@ -60,6 +81,9 @@ export interface SendInput {
 
   // Optional file attachments, symmetric with the attachments download shape
   attachments?: EmailAttachment[]
+
+  // Save to the Drafts folder instead of sending (always on in draft-only mode)
+  draft?: boolean
 }
 
 /**
@@ -109,16 +133,18 @@ async function handleNew(accounts: AccountConfig[], input: SendInput): Promise<a
 
   const account = resolveSingleAccount(accounts, input.account)
 
-  const result = await sendNewEmail(account, {
-    to: input.to,
-    subject: input.subject,
-    body: input.body,
-    cc: input.cc,
-    bcc: input.bcc,
-    attachments: input.attachments
-  })
-
-  const saved_to_sent = await saveToSent(account, result)
+  const result = await sendNewEmail(
+    account,
+    {
+      to: input.to,
+      subject: input.subject,
+      body: input.body,
+      cc: input.cc,
+      bcc: input.bcc,
+      attachments: input.attachments
+    },
+    !asDraft(input)
+  )
 
   return {
     action: 'new',
@@ -127,7 +153,7 @@ async function handleNew(accounts: AccountConfig[], input: SendInput): Promise<a
     subject: input.subject,
     success: result.success,
     message_id: result.message_id,
-    saved_to_sent
+    ...(await finish(account, result, asDraft(input)))
   }
 }
 
@@ -161,18 +187,20 @@ async function handleReply(accounts: AccountConfig[], input: SendInput): Promise
     )
   }
 
-  const result = await replyToEmail(account, {
-    to: replyTo,
-    subject: input.subject || original.subject,
-    body: input.body,
-    cc: input.cc,
-    bcc: input.bcc,
-    in_reply_to: original.message_id,
-    references: original.references || original.message_id,
-    attachments: input.attachments
-  })
-
-  const saved_to_sent = await saveToSent(account, result)
+  const result = await replyToEmail(
+    account,
+    {
+      to: replyTo,
+      subject: input.subject || original.subject,
+      body: input.body,
+      cc: input.cc,
+      bcc: input.bcc,
+      in_reply_to: original.message_id,
+      references: original.references || original.message_id,
+      attachments: input.attachments
+    },
+    !asDraft(input)
+  )
 
   return {
     action: 'reply',
@@ -182,7 +210,7 @@ async function handleReply(accounts: AccountConfig[], input: SendInput): Promise
     in_reply_to: original.message_id,
     success: result.success,
     message_id: result.message_id,
-    saved_to_sent
+    ...(await finish(account, result, asDraft(input)))
   }
 }
 
@@ -212,17 +240,19 @@ async function handleForward(accounts: AccountConfig[], input: SendInput): Promi
   // Read original email to include in forward
   const original = await readEmail(account, input.uid, folder)
 
-  const result = await forwardEmail(account, {
-    to: input.to,
-    subject: input.subject || original.subject,
-    body: input.body,
-    cc: input.cc,
-    bcc: input.bcc,
-    original_body: original.body_text,
-    attachments: input.attachments
-  })
-
-  const saved_to_sent = await saveToSent(account, result)
+  const result = await forwardEmail(
+    account,
+    {
+      to: input.to,
+      subject: input.subject || original.subject,
+      body: input.body,
+      cc: input.cc,
+      bcc: input.bcc,
+      original_body: original.body_text,
+      attachments: input.attachments
+    },
+    !asDraft(input)
+  )
 
   return {
     action: 'forward',
@@ -231,6 +261,6 @@ async function handleForward(accounts: AccountConfig[], input: SendInput): Promi
     subject: input.subject || `Fwd: ${original.subject}`,
     success: result.success,
     message_id: result.message_id,
-    saved_to_sent
+    ...(await finish(account, result, asDraft(input)))
   }
 }

@@ -99,6 +99,9 @@ Send a new email via SMTP.
 ```json
 {"action": "new", "account": "user@gmail.com", "to": "a@example.com", "subject": "Update", "body": "See details.", "cc": "b@example.com", "bcc": "c@example.com"}
 ```
+```json
+{"action": "new", "account": "user@gmail.com", "to": "a@example.com", "subject": "Proposal", "body": "Draft for review.", "draft": true}
+```
 
 ### reply
 Reply to an email. Reads the original email to set threading headers and auto-derives the recipient when `to` is omitted.
@@ -131,6 +134,7 @@ Forward an email. The original body is appended with a separator.
 - `cc` - CC recipients (comma-separated, optional)
 - `bcc` - BCC recipients (comma-separated, optional)
 - `attachments` - Base64 file attachments, max 10 files and 25MB decoded total
+- `draft` - Save new/reply/forward to the Drafts folder instead of sending (optional)
 
 ## Outbound response and provider behavior
 
@@ -140,3 +144,11 @@ Forward an email. The original body is appended with a separator.
 - Outlook.com/Hotmail/Live accounts use OAuth2 automatically; the first use may return a sign-in link and code, and tokens refresh silently.
 - Reply subjects are prefixed with `Re:` when needed; forward subjects are prefixed with `Fwd:` when needed.
 - Bodies support basic markdown such as headings, lists, and bold text.
+
+### Drafts
+
+With `draft: true`, `new`, `reply` and `forward` compose the message exactly as they would send it (threading headers, quoted original, attachments) but append it to the account's Drafts folder (flags `\Draft`, `\Seen`) instead. The result carries `sent: false`, `saved_to_drafts: true` and `drafts_folder`. If the draft cannot be saved the call fails; nothing is sent.
+
+### Draft-only mode
+
+For agents that read untrusted mail, run the server with `EMAIL_MCP_DRAFT_ONLY=1`. Every `new`, `reply` and `forward` becomes a draft, whatever `draft` says, so the user reviews and sends it. `move`, `archive` and `trash` (and `config` `setup_reset`) are removed from the advertised tool schema and return a `DRAFT_ONLY` error if called anyway. Search, read and flag changes still work.
