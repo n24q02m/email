@@ -88,7 +88,8 @@ const SLOW_DOWN_BACKOFF_MS = 5000
 const TOKEN_REFRESH_BUFFER_SECONDS = 300
 
 // Persistent token storage: `<data dir>/tokens.json` (0600), where the data dir
-// is `EMAIL_DATA_DIR` when set, else `~/.better-email-mcp` (see src/data-dir.ts).
+// is `EMAIL_DATA_DIR` when set, else `~/.email` (see src/data-dir.ts); a file an
+// earlier release wrote under `~/.better-email-mcp` is copied forward on startup.
 // Resolved per call, not at import time, so the override applies to the whole
 // process and tests can point it at a temporary directory. One seam for the
 // path: every read, write and delete below has to agree on the same file.

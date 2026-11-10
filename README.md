@@ -128,7 +128,7 @@ The package ships one binary, `email` (run via `npx @n24q02m/email`), also insta
 |:-----------|:------------|
 | `email` | Start the MCP server over **stdio** (default). Reads credentials from `EMAIL_CREDENTIALS`, or from `EMAIL_USER` + `EMAIL_APP_PASSWORD` |
 | `email --http` | Start the server in **HTTP** (single-user, bearer token) mode. Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
-| `email auth [outlook] <email> [--client-id=<id>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.better-email-mcp/tokens.json`. The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
+| `email auth [outlook] <email> [--client-id=<id>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.email/tokens.json`. The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
 | `email logout [<email>]` | Clear the locally stored Outlook token(s). Omit `<email>` to clear every stored token |
 | `email config status` / `email status` | Report whether a stored credential file exists (never prints credential values) |
 | `email config delete --yes` | Delete the stored credential file |
@@ -275,7 +275,7 @@ docker run -p 8080:8080 \
   -v email-data:/data \
   n24q02m/email:latest
 ```
-Mint the hash with `printf '%s' "$TOKEN" | email token hash`; the token is read from stdin, never argv. Clients send the raw token as `Authorization: Bearer <token>`. Saved Outlook tokens live under `/data/.better-email-mcp/` and persist when the `/data` volume is kept.
+Mint the hash with `printf '%s' "$TOKEN" | email token hash`; the token is read from stdin, never argv. Clients send the raw token as `Authorization: Bearer <token>`. Saved Outlook tokens live under `/data/.email/` and persist when the `/data` volume is kept.
 
 ### Self-Hosting with Docker Compose
 
@@ -298,7 +298,7 @@ Outlook/Hotmail/Live accounts use OAuth2 device-code. Run `email auth outlook <a
 1. The CLI prints a device code and a Microsoft login URL
 2. Open the URL in a browser and enter the code
 3. Sign in and authorize the app
-4. Tokens are saved to `~/.better-email-mcp/tokens.json` (created with mode 0600 on POSIX). In Docker that path is `/data/.better-email-mcp/tokens.json`.
+4. Tokens are saved to `~/.email/tokens.json` (created with mode 0600 on POSIX). In Docker that path is `/data/.email/tokens.json`. A token file from an earlier release (`~/.better-email-mcp/tokens.json`) is copied forward on the next start; the old file is left in place.
 
 OAuth uses the bundled public Azure client (`d56f8c71-9f7c-43f4-9934-be29cb6e77b0`, Thunderbird-pattern) -- no user-side Azure registration needed.
 
@@ -313,7 +313,7 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `EMAIL_CREDENTIALS` | Yes (stdio) | - | Email credentials, `email:app-password` per account, comma-separated for multi-account. Optional custom IMAP host/port: `email:password:imap_host:imap_port` |
 | `EMAIL_USER` | Alternative (stdio, single-account) | - | Email address. Used with `EMAIL_APP_PASSWORD` as a per-field alternative to `EMAIL_CREDENTIALS`; merged into `EMAIL_CREDENTIALS` at boot |
 | `EMAIL_APP_PASSWORD` | Alternative (stdio, single-account) | - | App password (Gmail/Yahoo/iCloud) or Outlook App Password; used with `EMAIL_USER` |
-| `EMAIL_DATA_DIR` | No | `$HOME` | Base directory for this server's own files. Saved Outlook tokens live in `<dir>/.better-email-mcp/tokens.json`, so the default is `~/.better-email-mcp/tokens.json` (the Docker image sets `HOME=/data`). A relative value is resolved under `$HOME` and must stay inside it; use an absolute path to point at a mounted volume |
+| `EMAIL_DATA_DIR` | No | `$HOME` | Base directory for this server's own files. Saved Outlook tokens live in `<dir>/.email/tokens.json`, so the default is `~/.email/tokens.json` (the Docker image sets `HOME=/data`); a file an earlier release wrote under `<dir>/.better-email-mcp/` is copied forward on startup. A relative value is resolved under `$HOME` and must stay inside it; use an absolute path to point at a mounted volume |
 | `PORT` | No | `0` (OS-assigned) | Server port (http mode); set explicitly (e.g. `8080`) to bind a fixed port |
 | `HOST` | No | - | Bind address (http mode) |
 | `EMAIL_MCP_TOKEN_HASH` | No (http; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. Without it, HTTP runs unauthenticated only on loopback |
@@ -413,8 +413,8 @@ Credentials are single-user: whoever runs the server (or your OS user for stdio)
 
 | Mode | Storage | Encryption | Who can read your data? |
 |---|---|---|---|
-| HTTP (Docker) | Env vars (`EMAIL_CREDENTIALS`) and saved Outlook tokens in `$HOME/.better-email-mcp/tokens.json` (the `/data` volume) | Tokens: plain JSON, POSIX file mode 0600 | Server operator |
-| stdio | Env vars; saved Outlook tokens in `~/.better-email-mcp/tokens.json`; legacy `config.enc` from earlier releases is still read | Tokens: plain JSON, POSIX file mode 0600 | Only your OS user |
+| HTTP (Docker) | Env vars (`EMAIL_CREDENTIALS`) and saved Outlook tokens in `$HOME/.email/tokens.json` (the `/data` volume) | Tokens: plain JSON, POSIX file mode 0600 | Server operator |
+| stdio | Env vars; saved Outlook tokens in `~/.email/tokens.json`; legacy `config.enc` from earlier releases is still read | Tokens: plain JSON, POSIX file mode 0600 | Only your OS user |
 
 ## License
 

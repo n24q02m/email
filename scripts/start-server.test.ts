@@ -1,4 +1,4 @@
-import { mkdtempSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { PerPluginStore, setHomeDirForTesting } from '@n24q02m/hull/storage'
@@ -27,7 +27,11 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
   beforeEach(() => {
     vi.resetModules()
     vi.clearAllMocks()
-    setHomeDirForTesting(mkdtempSync(join(tmpdir(), 'email-cli-test-')))
+    const home = mkdtempSync(join(tmpdir(), 'email-cli-test-'))
+    // Both the credential blob (hull home) and the token file (EMAIL_DATA_DIR) must
+    // stay inside the temp tree: startup migrates a pre-rename store before buildCli.
+    setHomeDirForTesting(home)
+    process.env.EMAIL_DATA_DIR = home
 
     process.argv = ['node', 'scripts/start-server.ts']
     process.exit = vi.fn((_code) => undefined as never) as any
@@ -40,6 +44,7 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     process.exit = originalExit
     console.error = originalConsoleError
     setHomeDirForTesting(null)
+    delete process.env.EMAIL_DATA_DIR
     vi.restoreAllMocks()
   })
 
@@ -179,11 +184,10 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     logSpy.mockRestore()
   })
 
-  it('config status reads the pre-rename credential store (better-email), not one named after the command', async () => {
-    // The command is `email`, but saved credentials live under the PerPluginStore
-    // slug 'better-email' (~/.better-email-mcp). buildCli would derive 'email' from
-    // the command name; this pins the explicit pluginName so existing installs still
-    // report as configured after the rename.
+  it('migrates the pre-rename credential store (better-email) before config status reads it', async () => {
+    // Releases before the rename saved under the PerPluginStore slug 'better-email'
+    // (~/.better-email). Startup has to copy that blob into the current store, or an
+    // existing install would report "not configured" after the upgrade.
     await new PerPluginStore('better-email').save({ EMAIL_CREDENTIALS: 'user@example.com:app-password' })
     process.argv.push('config', 'status')
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
@@ -194,5 +198,26 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     expect(logSpy).toHaveBeenCalledWith('email: configured (source: file)')
     expect(process.exit).toHaveBeenCalledWith(0)
     logSpy.mockRestore()
+  })
+
+  it('migrates a pre-rename token file (better-email-mcp) into the current data dir', async () => {
+    // The other half of the same migration: `email auth` used to save tokens under
+    // ~/.better-email-mcp/tokens.json; the CLI must see them under ~/.email without
+    // asking the user to authenticate again.
+    mkdirSync(join(process.env.EMAIL_DATA_DIR as string, '.better-email-mcp'), { recursive: true })
+    writeFileSync(
+      join(process.env.EMAIL_DATA_DIR as string, '.better-email-mcp', 'tokens.json'),
+      JSON.stringify({
+        'user@outlook.com': { accessToken: 'at', refreshToken: 'rt', expiresAt: 1000, clientId: 'cid' }
+      })
+    )
+    process.argv.push('logout', 'user@outlook.com')
+    vi.mocked(runLogout).mockResolvedValue(undefined)
+
+    await import('./start-server.js')
+    await vi.waitFor(() => expect(runLogout).toHaveBeenCalled())
+
+    expect(existsSync(join(process.env.EMAIL_DATA_DIR as string, '.email', 'tokens.json'))).toBe(true)
+    expect(existsSync(join(process.env.EMAIL_DATA_DIR as string, '.better-email-mcp', 'tokens.json'))).toBe(true)
   })
 })

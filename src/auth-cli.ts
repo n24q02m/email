@@ -12,6 +12,8 @@
  * scope as the rest of this CLI (per tool-layout.md CLI Surface invariants).
  */
 
+import { join } from 'node:path'
+import { resolveDataDir } from './data-dir.js'
 import { deleteStoredTokens, deviceCodeAuth, isOutlookDomain } from './tools/helpers/oauth2.js'
 
 const KNOWN_PROVIDERS = new Set(['outlook'])
@@ -54,7 +56,7 @@ export async function runAuth(): Promise<void> {
     console.error('Example: email auth user@outlook.com')
     console.error('')
     console.error('Authenticates an Outlook/Hotmail/Live account via OAuth2 Device Code flow.')
-    console.error('Tokens are saved to ~/.better-email-mcp/tokens.json')
+    console.error(`Tokens are saved to ${join(resolveDataDir(), 'tokens.json')}`)
     process.exit(1)
   }
 

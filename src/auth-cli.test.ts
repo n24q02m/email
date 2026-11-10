@@ -1,5 +1,7 @@
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAuth, runLogout } from './auth-cli.js'
+import { resolveDataDir } from './data-dir.js'
 import { deleteStoredTokens, deviceCodeAuth, isOutlookDomain } from './tools/helpers/oauth2.js'
 
 vi.mock('./tools/helpers/oauth2.js', () => ({
@@ -41,7 +43,9 @@ describe('runAuth', () => {
     expect(console.error).toHaveBeenCalledWith(
       'Authenticates an Outlook/Hotmail/Live account via OAuth2 Device Code flow.'
     )
-    expect(console.error).toHaveBeenCalledWith('Tokens are saved to ~/.better-email-mcp/tokens.json')
+    // The hint names the resolved path, so it follows EMAIL_DATA_DIR instead of
+    // promising the home directory a container does not use.
+    expect(console.error).toHaveBeenCalledWith(`Tokens are saved to ${join(resolveDataDir(), 'tokens.json')}`)
     expect(process.exit).toHaveBeenCalledTimes(1)
     expect(process.exit).toHaveBeenCalledWith(1)
     expect(deviceCodeAuth).not.toHaveBeenCalled()
