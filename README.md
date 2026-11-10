@@ -281,6 +281,7 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `EMAIL_CREDENTIALS` | Yes (stdio) | - | Email credentials, `email:app-password` per account, comma-separated for multi-account. Optional custom IMAP host/port: `email:password:imap_host:imap_port` |
 | `EMAIL_USER` | Alternative (stdio, single-account) | - | Email address. Used with `EMAIL_APP_PASSWORD` as a per-field alternative to `EMAIL_CREDENTIALS`; merged into `EMAIL_CREDENTIALS` at boot |
 | `EMAIL_APP_PASSWORD` | Alternative (stdio, single-account) | - | App password (Gmail/Yahoo/iCloud) or Outlook App Password; used with `EMAIL_USER` |
+| `EMAIL_DATA_DIR` | No | `$HOME` | Base directory for this server's own files. Saved Outlook tokens live in `<dir>/.better-email-mcp/tokens.json`, so the default is `~/.better-email-mcp/tokens.json` (the Docker image sets `HOME=/data`). A relative value is resolved under `$HOME` and must stay inside it; use an absolute path to point at a mounted volume |
 | `PORT` | No | `0` (OS-assigned) | Server port (http mode); set explicitly (e.g. `8080`) to bind a fixed port |
 | `HOST` | No | - | Bind address (http mode) |
 | `EMAIL_MCP_TOKEN_HASH` | No (http; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. Without it, HTTP runs unauthenticated only on loopback |
