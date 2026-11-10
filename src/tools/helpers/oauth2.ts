@@ -8,10 +8,10 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { tryOpenBrowser } from '@n24q02m/hull'
 import { setState } from '../../credential-state.js'
+import { resolveDataDir } from '../../data-dir.js'
 import { isSafeUrl } from './security.js'
 
 // Microsoft OAuth2 endpoints. The tenant segment decides which directory signs
@@ -87,10 +87,14 @@ const DEFAULT_POLLING_INTERVAL_SECONDS = 5
 const SLOW_DOWN_BACKOFF_MS = 5000
 const TOKEN_REFRESH_BUFFER_SECONDS = 300
 
-// Persistent token storage: ~/.better-email-mcp/tokens.json (0600). The directory
-// keeps its pre-rename name so tokens saved by earlier releases stay readable.
-const CONFIG_DIR = join(homedir(), '.better-email-mcp')
-const TOKEN_FILE = join(CONFIG_DIR, 'tokens.json')
+// Persistent token storage: `<data dir>/tokens.json` (0600), where the data dir
+// is `EMAIL_DATA_DIR` when set, else `~/.better-email-mcp` (see src/data-dir.ts).
+// Resolved per call, not at import time, so the override applies to the whole
+// process and tests can point it at a temporary directory. One seam for the
+// path: every read, write and delete below has to agree on the same file.
+function tokenFile(): string {
+  return join(resolveDataDir(), 'tokens.json')
+}
 
 export interface OAuth2Tokens {
   accessToken: string
@@ -272,7 +276,7 @@ export async function loadStoredTokens(email: string): Promise<OAuth2Tokens | nu
     if (cachedTokenStore) {
       return cachedTokenStore[key] || null
     }
-    const data = await readFile(TOKEN_FILE, 'utf-8')
+    const data = await readFile(tokenFile(), 'utf-8')
     const store = parseTokenStore(data)
     if (!store) {
       return null
@@ -290,7 +294,7 @@ export async function loadStoredTokens(email: string): Promise<OAuth2Tokens | nu
  */
 export async function loadOutlookEmails(): Promise<string[]> {
   try {
-    const data = await readFile(TOKEN_FILE, 'utf-8')
+    const data = await readFile(tokenFile(), 'utf-8')
     const store = parseTokenStore(data)
     return store ? Object.keys(store).filter((k) => k.includes('@')) : []
   } catch {
@@ -312,14 +316,14 @@ export async function saveTokens(email: string, tokens: OAuth2Tokens): Promise<v
  * array if there was nothing to delete).
  */
 export async function deleteStoredTokens(email?: string): Promise<string[]> {
-  if (!existsSync(TOKEN_FILE)) {
+  if (!existsSync(tokenFile())) {
     cachedTokenStore = null
     return []
   }
 
   let store: TokenStore
   try {
-    const data = readFileSync(TOKEN_FILE, 'utf-8')
+    const data = readFileSync(tokenFile(), 'utf-8')
     store = parseTokenStore(data) ?? {}
   } catch {
     store = {}
@@ -342,7 +346,7 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
   }
 
   cachedTokenStore = store
-  writeFileSync(TOKEN_FILE, JSON.stringify(store, null, 2), { mode: 0o600 })
+  writeFileSync(tokenFile(), JSON.stringify(store, null, 2), { mode: 0o600 })
   return deleted
 }
 
@@ -350,14 +354,15 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
  * Write the email-keyed ``tokens.json`` (0600). Synchronous; creates the config dir if needed.
  */
 function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
-  if (!existsSync(CONFIG_DIR)) {
-    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 })
+  const dir = resolveDataDir()
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true, mode: 0o700 })
   }
 
   let store: TokenStore = cachedTokenStore || {}
   try {
-    if (!cachedTokenStore && existsSync(TOKEN_FILE)) {
-      const data = readFileSync(TOKEN_FILE, 'utf-8')
+    if (!cachedTokenStore && existsSync(tokenFile())) {
+      const data = readFileSync(tokenFile(), 'utf-8')
       const parsedStore = parseTokenStore(data)
       if (parsedStore) {
         store = parsedStore
@@ -372,7 +377,7 @@ function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
 
   store[emailKey] = tokens
   cachedTokenStore = store
-  writeFileSync(TOKEN_FILE, JSON.stringify(store, null, 2), { mode: 0o600 })
+  writeFileSync(tokenFile(), JSON.stringify(store, null, 2), { mode: 0o600 })
 }
 
 /**

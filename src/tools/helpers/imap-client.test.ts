@@ -193,6 +193,72 @@ describe('searchEmails', () => {
     expect(results[1]!.account_email).toBe('user2@gmail.com')
   })
 
+  it('returns the healthy mailboxes when another mailbox is unavailable', async () => {
+    // Multi-mailbox read: one IMAP server being down must not cost the caller the
+    // messages that the other mailboxes did return.
+    mockSimpleParser.mockResolvedValue({ text: 'text' } as any)
+    const account2: AccountConfig = { ...account, id: 'user2_gmail_com', email: 'user2@gmail.com' }
+    const msg = {
+      uid: 1,
+      flags: new Set(),
+      envelope: {
+        subject: 'Test',
+        from: [{ address: 'x@test.com' }],
+        to: [{ address: 'y@test.com' }],
+        date: new Date()
+      },
+      source: Buffer.from('text')
+    }
+    mockClient.fetchAll.mockResolvedValue([msg])
+
+    let connectCalls = 0
+    mockClient.connect.mockImplementation(async () => {
+      connectCalls += 1
+      if (connectCalls > 1) throw new Error('Connection refused')
+    })
+
+    const results = await searchEmails([account, account2], 'ALL', 'INBOX', 10)
+
+    expect(results).toHaveLength(1)
+    expect(results[0]!.account_email).toBe('test@gmail.com')
+    expect(results.unavailableAccounts).toEqual([
+      {
+        account_id: 'user2_gmail_com',
+        account_email: 'user2@gmail.com',
+        code: 'IMAP_SEARCH_FAILED',
+        reason: 'Unable to search this account: Connection refused'
+      }
+    ])
+  })
+
+  it('reports every unavailable mailbox, not just the first', async () => {
+    mockSimpleParser.mockResolvedValue({ text: 'text' } as any)
+    const account2: AccountConfig = { ...account, id: 'user2_gmail_com', email: 'user2@gmail.com' }
+    const account3: AccountConfig = { ...account, id: 'user3_gmail_com', email: 'user3@gmail.com' }
+    mockClient.fetchAll.mockResolvedValue([
+      {
+        uid: 1,
+        flags: new Set(),
+        envelope: { subject: 'Test', date: new Date() },
+        source: Buffer.from('text')
+      }
+    ])
+
+    let connectCalls = 0
+    mockClient.connect.mockImplementation(async () => {
+      connectCalls += 1
+      if (connectCalls > 1) throw new Error('Connection refused')
+    })
+
+    const results = await searchEmails([account, account2, account3], 'ALL', 'INBOX', 10)
+
+    expect(results).toHaveLength(1)
+    expect(results.unavailableAccounts?.map((item) => item.account_email)).toEqual([
+      'user2@gmail.com',
+      'user3@gmail.com'
+    ])
+  })
+
   it('reports an unavailable account without returning a sentinel email', async () => {
     mockClient.connect.mockRejectedValue(new Error('Connection refused'))
 
