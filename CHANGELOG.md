@@ -2,6 +2,147 @@
 
 <!-- version list -->
 
+## v1.43.0-beta.1 (2026-11-10)
+
+### Bug Fixes
+
+- Add adaptive geometric windowing to IMAP search fallback
+  ([#1203](https://github.com/n24q02m/email/pull/1203),
+  [`d3ec9bd`](https://github.com/n24q02m/email/commit/d3ec9bdf98782e43471cb07d0002dc7994dccb0b))
+
+- Assert every registry tool has a CLI command ([#1242](https://github.com/n24q02m/email/pull/1242),
+  [`c7f4f9e`](https://github.com/n24q02m/email/commit/c7f4f9e58b4b464c73e7b8c8834b75282edb1a2a))
+
+- Assert hooks.json points at the shipped credential hook
+  ([#1233](https://github.com/n24q02m/email/pull/1233),
+  [`316faeb`](https://github.com/n24q02m/email/commit/316faeb1ec476d44addd1c26167be40bb82324da))
+
+- Default message reads to an explicit bounded preview
+  ([#1232](https://github.com/n24q02m/email/pull/1232),
+  [`a259ed1`](https://github.com/n24q02m/email/commit/a259ed1361431b3a4c246b29dc18e567d8a055f9))
+
+- Drop removed openBrowser option from runHttpServer call
+  ([#1204](https://github.com/n24q02m/email/pull/1204),
+  [`1b1cb8c`](https://github.com/n24q02m/email/commit/1b1cb8c961c2a915375b24a59aa7a0eb6488b54d))
+
+- Drop stale relay wording from credentials hook
+  ([#1205](https://github.com/n24q02m/email/pull/1205),
+  [`c8e1809`](https://github.com/n24q02m/email/commit/c8e1809383e62ed72656bf6e618d9a7313456e0c))
+
+- Honor EMAIL_DATA_DIR and cover multi-mailbox search fan-out
+  ([#1235](https://github.com/n24q02m/email/pull/1235),
+  [`0c38906`](https://github.com/n24q02m/email/commit/0c389064a989d8325291c5cd8e9981798e6b11ca))
+
+- Keep the escape test native to the platform ([#1235](https://github.com/n24q02m/email/pull/1235),
+  [`0c38906`](https://github.com/n24q02m/email/commit/0c389064a989d8325291c5cd8e9981798e6b11ca))
+
+- Lowercase Renovate lock file maintenance commit message
+  ([#1216](https://github.com/n24q02m/email/pull/1216),
+  [`0f7bbdf`](https://github.com/n24q02m/email/commit/0f7bbdfb9c76862424e5d2ebf0b32fee529d30c8))
+
+- Match credential hook to the real plugin tool prefix
+  ([#1208](https://github.com/n24q02m/email/pull/1208),
+  [`816bf73`](https://github.com/n24q02m/email/commit/816bf734a7af55979c0da49dbe50313e48ee5403))
+
+- Move discarded agent notes into docs/engineering-lessons.md
+  ([#1236](https://github.com/n24q02m/email/pull/1236),
+  [`edb9871`](https://github.com/n24q02m/email/commit/edb9871109512b8687b2092866748c0a0ba0cd93))
+
+- Move the token store to ~/.email and migrate the old one
+  ([#1238](https://github.com/n24q02m/email/pull/1238),
+  [`ff1bf3d`](https://github.com/n24q02m/email/commit/ff1bf3d367f306286c29ce0d3d70d700d571c91a))
+
+- Point docs links at docs.n24q02m.com ([#1206](https://github.com/n24q02m/email/pull/1206),
+  [`f88da97`](https://github.com/n24q02m/email/commit/f88da97555a1cb880ccb39cdd4179dda39bf03a3))
+
+- Remove the email notification and bot governance workflows
+  ([#1226](https://github.com/n24q02m/email/pull/1226),
+  [`f25bffb`](https://github.com/n24q02m/email/commit/f25bffb1e2fa8f73d4a7ee944a73f47ca25e95aa))
+
+- Run SessionStart hook tests in ci ([#1207](https://github.com/n24q02m/email/pull/1207),
+  [`736dbe6`](https://github.com/n24q02m/email/commit/736dbe69160355dc9f737a6eb1d7df9d3f77b020))
+
+- Save iCloud sent mail via IMAP APPEND ([#1209](https://github.com/n24q02m/email/pull/1209),
+  [`e2d994d`](https://github.com/n24q02m/email/commit/e2d994d0a446f82ba351407eba02b52c2b785c02))
+
+- Upgrade Biome to 2.6 and fix lock file maintenance title
+  ([#1216](https://github.com/n24q02m/email/pull/1216),
+  [`0f7bbdf`](https://github.com/n24q02m/email/commit/0f7bbdfb9c76862424e5d2ebf0b32fee529d30c8))
+
+- Upgrade Biome to 2.6 and keep Markdown/YAML out of the formatter
+  ([#1216](https://github.com/n24q02m/email/pull/1216),
+  [`0f7bbdf`](https://github.com/n24q02m/email/commit/0f7bbdfb9c76862424e5d2ebf0b32fee529d30c8))
+
+- **deps**: Lock file maintenance ([#1234](https://github.com/n24q02m/email/pull/1234),
+  [`174d99e`](https://github.com/n24q02m/email/commit/174d99e5cbbe74f558600b801c678e0ffb642d22))
+
+- **deps**: Lock file maintenance ([#1231](https://github.com/n24q02m/email/pull/1231),
+  [`add2f87`](https://github.com/n24q02m/email/commit/add2f8776fd08cf775ef27458b645ac1a893dbd3))
+
+- **deps**: Lock file maintenance ([#1228](https://github.com/n24q02m/email/pull/1228),
+  [`36ad214`](https://github.com/n24q02m/email/commit/36ad2146767382559c854fda362f1cc9b133818f))
+
+- **deps**: Lock file maintenance ([#1227](https://github.com/n24q02m/email/pull/1227),
+  [`5772aae`](https://github.com/n24q02m/email/commit/5772aae0e43886e74d660d1b3b2908b546933d1d))
+
+- **deps**: Lock file maintenance ([#1224](https://github.com/n24q02m/email/pull/1224),
+  [`c5675da`](https://github.com/n24q02m/email/commit/c5675da22ceb05d8fc594fd294dc994e7473a314))
+
+- **deps**: Lock file maintenance ([#1223](https://github.com/n24q02m/email/pull/1223),
+  [`d799c0e`](https://github.com/n24q02m/email/commit/d799c0e91d46f42af961e956936fbd01435e5370))
+
+- **deps**: Lock file maintenance ([#1222](https://github.com/n24q02m/email/pull/1222),
+  [`4352ca6`](https://github.com/n24q02m/email/commit/4352ca64311d62b141cae671b7bb7462e07cc953))
+
+- **deps**: Lock file maintenance ([#1220](https://github.com/n24q02m/email/pull/1220),
+  [`554d11c`](https://github.com/n24q02m/email/commit/554d11ca7dc363d185ced6f66f19e337baf323b7))
+
+- **deps**: Lock file maintenance ([#1215](https://github.com/n24q02m/email/pull/1215),
+  [`e0911fc`](https://github.com/n24q02m/email/commit/e0911fc37a61b7a99d6229f413562c9db34af7ee))
+
+- **deps**: Update marked to ^18.1.3 ([#1229](https://github.com/n24q02m/email/pull/1229),
+  [`ff12485`](https://github.com/n24q02m/email/commit/ff12485f66630ce6c56678845354956da79e3c1e))
+
+- **deps**: Update minor dependencies ([#1213](https://github.com/n24q02m/email/pull/1213),
+  [`a6504a0`](https://github.com/n24q02m/email/commit/a6504a071ab6d6e48c746033e0c30766fd62437b))
+
+- **deps**: Update Node.js to ebfe2f9 ([#1210](https://github.com/n24q02m/email/pull/1210),
+  [`8452e87`](https://github.com/n24q02m/email/commit/8452e8718cf2cf133fc9c7f7bb023e212c0976a3))
+
+- **deps**: Update non-major dev dependencies ([#1214](https://github.com/n24q02m/email/pull/1214),
+  [`17248ca`](https://github.com/n24q02m/email/commit/17248ca4eb6c59709f83c365c4fa05e59a0a4067))
+
+- **deps**: Update non-major dev dependencies to ^5.1.0
+  ([#1230](https://github.com/n24q02m/email/pull/1230),
+  [`f60d576`](https://github.com/n24q02m/email/commit/f60d5762d107f9f83cd57739fa51800acb004648))
+
+- **deps**: Update oven/bun:1-alpine Docker digest to 4cf82f5
+  ([#1211](https://github.com/n24q02m/email/pull/1211),
+  [`b35d411`](https://github.com/n24q02m/email/commit/b35d411e8d79b27ebd1cc25ecc445fb6f6b93b4a))
+
+- **deps**: Update patch dependencies ([#1218](https://github.com/n24q02m/email/pull/1218),
+  [`4fca8ab`](https://github.com/n24q02m/email/commit/4fca8ab7e7c05eed237189667862fc4c295ec652))
+
+- **deps**: Update patch dependencies ([#1212](https://github.com/n24q02m/email/pull/1212),
+  [`8204b0c`](https://github.com/n24q02m/email/commit/8204b0cbf3781623571a90574b132d35b5d8952f))
+
+### Features
+
+- Add accounts file with single and multi account isolation
+  ([#1240](https://github.com/n24q02m/email/pull/1240),
+  [`5474a86`](https://github.com/n24q02m/email/commit/5474a860341400601e93cf0254c8583df65409a4))
+
+- Add check-credentials hook and tests
+  ([`9c67456`](https://github.com/n24q02m/email/commit/9c674560019be21aaf16147751979d8c1a0bea30))
+
+- Document the email server handover ([#1239](https://github.com/n24q02m/email/pull/1239),
+  [`ea0edc0`](https://github.com/n24q02m/email/commit/ea0edc0dacea993a9d2cc6550f76e059f903fde1))
+
+- Expose every MCP tool as an email CLI subcommand
+  ([#1237](https://github.com/n24q02m/email/pull/1237),
+  [`836c980`](https://github.com/n24q02m/email/commit/836c980cfbb2b79d81ff7bb68ff19ae94cfb20ea))
+
+
 ## v1.42.0 (2026-10-27)
 
 
