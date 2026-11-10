@@ -1,4 +1,0 @@
-## 2024-08-28 - [Unhandled Exception on Invalid URL in Worker Fetch]
-**Vulnerability:** The native `URL` constructor was being used without error handling when parsing incoming `request.url` in the Cloudflare Worker event handlers (`fetch` and `kvOutbound`). If a synthesized or malformed URL bypasses the edge parser and reaches these handlers, it could throw an unhandled exception, causing the worker process to crash (DoS vector).
-**Learning:** Cloudflare Workers generally guarantee that incoming HTTP requests have valid URLs, but for defense in depth and to protect against internally routed or synthesized requests (like from tests or sub-requests), we must not assume input is safe.
-**Prevention:** Always wrap `new URL()` calls in `try...catch` blocks when parsing untrusted or potentially malformed inputs, and return an appropriate HTTP response (like `400 Bad Request`) instead of throwing an unhandled exception.
