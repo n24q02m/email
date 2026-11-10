@@ -3,13 +3,15 @@
  * its own (single resolver, one base dir, an env override, and a guard that a
  * hostile value cannot walk out of the base).
  *
- * Layout: everything this server persists lives under `<base>/.better-email-mcp/`
- * (`tokens.json` today; hull's per-plugin credential store for other servers).
- * The directory keeps its pre-rename name so tokens saved by earlier releases
- * stay readable.
+ * Layout: everything this server persists lives under `<base>/.email/`
+ * (`tokens.json` for the saved Outlook grants, plus the `config.json` hull's
+ * per-plugin credential store writes for the CLI built-ins). The directory is
+ * named after the short product slug, the same one hull uses. A release before
+ * the rename wrote `<base>/.better-email-mcp/`; src/data-dir-migration.ts copies
+ * that forward on startup, so saved tokens stay readable.
  *
  * `EMAIL_DATA_DIR` replaces the base outright, so a container can mount a
- * single volume: `-e EMAIL_DATA_DIR=/data` -> `/data/.better-email-mcp/tokens.json`.
+ * single volume: `-e EMAIL_DATA_DIR=/data` -> `/data/.email/tokens.json`.
  *
  * Guard: a RELATIVE value is resolved against `$HOME` and must stay inside it,
  * so `..`, `../..`, `..\\..` and NUL bytes cannot leave the base. An ABSOLUTE
@@ -24,8 +26,17 @@ import { isAbsolute, join, resolve, sep } from 'node:path'
 /** Env var that replaces the base directory. */
 export const DATA_DIR_ENV = 'EMAIL_DATA_DIR'
 
-/** Directory name this server owns under the base. */
-export const DATA_DIR_NAME = '.better-email-mcp'
+/** Plugin slug hull keys the per-plugin credential store off (`<base>/.email/`). */
+export const STORE_PLUGIN = 'email'
+
+/** Slug every release before the rename passed to hull; a migration source only. */
+export const LEGACY_STORE_PLUGIN = 'better-email'
+
+/** Directory name this server owns under the base (hull's `.<STORE_PLUGIN>`). */
+export const DATA_DIR_NAME = `.${STORE_PLUGIN}`
+
+/** Directory every release before the rename wrote its own files into. */
+export const LEGACY_DATA_DIR_NAME = '.better-email-mcp'
 
 /** A `DATA_DIR` value that would leave the base directory. */
 export class DataDirEscapeError extends Error {

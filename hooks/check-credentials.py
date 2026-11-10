@@ -50,6 +50,9 @@ def _is_configured() -> bool:
         return True
     home = os.path.expanduser("~")
     for p in (
+        home + "/.email/tokens.json",
+        # Layout from before the data-directory rename. The server copies it into
+        # ~/.email/ on startup, so a not-yet-restarted install is still configured.
         home + "/.better-email-mcp/tokens.json",
         home + "/.config/mcp/config.enc",
         os.path.join(home, ".config", "mcp", "config.enc"),

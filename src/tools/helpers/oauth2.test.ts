@@ -220,7 +220,7 @@ describe('saveTokens', () => {
 
     saveTokens('user@outlook.com', tokens)
 
-    expect(mockMkdirSync).toHaveBeenCalledWith(expect.stringContaining('.better-email-mcp'), {
+    expect(mockMkdirSync).toHaveBeenCalledWith(expect.stringContaining('.email'), {
       recursive: true,
       mode: 0o700
     })

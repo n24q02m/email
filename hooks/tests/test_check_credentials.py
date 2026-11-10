@@ -45,7 +45,17 @@ class TestCheckCredentials(unittest.TestCase):
     @patch("os.path.expanduser")
     def test_is_configured_outlook_tokens(self, mock_expanduser, mock_exists):
         mock_expanduser.return_value = "/home/user"
-        # Tokens saved by `email auth outlook` live in ~/.better-email-mcp/tokens.json
+        # Tokens saved by `email auth outlook` live in ~/.email/tokens.json
+        mock_exists.side_effect = lambda p: p == "/home/user/.email/tokens.json"
+        self.assertTrue(check_credentials._is_configured())
+
+    @patch.dict(os.environ, {}, clear=True)
+    @patch("os.path.exists")
+    @patch("os.path.expanduser")
+    def test_is_configured_pre_rename_outlook_tokens(self, mock_expanduser, mock_exists):
+        # A token file from before the rename is copied forward on startup; the hook
+        # still accepts it so an install that has not restarted yet is not nagged.
+        mock_expanduser.return_value = "/home/user"
         mock_exists.side_effect = lambda p: p == "/home/user/.better-email-mcp/tokens.json"
         self.assertTrue(check_credentials._is_configured())
 
