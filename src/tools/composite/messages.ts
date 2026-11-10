@@ -44,8 +44,11 @@ export interface MessagesInput {
 
   // Read params
   uid?: number
-  preview?: boolean
+  /** Read a bounded preview (default) or a custom character budget when numeric. */
+  preview?: boolean | number
   max_chars?: number
+  /** Return the complete body, bypassing the default preview cap. */
+  full?: boolean
   uids?: number[]
   // Move params
   destination?: string
@@ -136,14 +139,17 @@ async function handleRead(accounts: AccountConfig[], input: MessagesInput): Prom
     throw new EmailMCPError('uid is required for read action', 'VALIDATION_ERROR', 'Provide the email UID from search')
   }
 
+  const wantsFullBody = input.full === true || input.preview === false
+
   let previewLimit: number | undefined
-  if (input.preview) {
-    const limit = input.max_chars ?? DEFAULT_PREVIEW_MAX_CHARS
+  if (!wantsFullBody) {
+    const requested = typeof input.preview === 'number' ? input.preview : input.max_chars
+    const limit = requested ?? DEFAULT_PREVIEW_MAX_CHARS
     if (!Number.isInteger(limit) || limit < 1 || limit > MAX_PREVIEW_MAX_CHARS) {
       throw new EmailMCPError(
         `max_chars must be an integer between 1 and ${MAX_PREVIEW_MAX_CHARS}`,
         'VALIDATION_ERROR',
-        'Use a positive bounded max_chars value for preview mode'
+        'Use a positive bounded max_chars value, or full:true for the complete body'
       )
     }
     previewLimit = limit
@@ -156,7 +162,8 @@ async function handleRead(accounts: AccountConfig[], input: MessagesInput): Prom
   if (previewLimit === undefined) {
     return {
       action: 'read',
-      ...email
+      ...email,
+      preview: false
     }
   }
 
@@ -166,12 +173,27 @@ async function handleRead(accounts: AccountConfig[], input: MessagesInput): Prom
   return {
     action: 'read',
     ...email,
-    body_text: truncated ? email.body_text.slice(0, previewLimit) : email.body_text,
+    body_text: truncated
+      ? `${email.body_text.slice(0, previewLimit)}${buildTruncationMarker(bodyCharCount, previewLimit)}`
+      : email.body_text,
     preview: true,
     body_truncated: truncated,
     body_char_count: bodyCharCount,
-    body_limit: previewLimit
+    body_limit: previewLimit,
+    ...(truncated
+      ? {
+          body_truncation_hint: `Body is ${bodyCharCount} characters; pass full:true for the complete body or a larger max_chars (up to ${MAX_PREVIEW_MAX_CHARS}).`
+        }
+      : {})
   }
+}
+
+/**
+ * Explicit truncation marker appended to a bounded body. It names the true
+ * body length and the escape hatch, so a bounded read never looks complete.
+ */
+function buildTruncationMarker(totalChars: number, limit: number): string {
+  return `\n\n[Truncated: showing ${limit} of ${totalChars} characters (${totalChars - limit} omitted). Pass full:true for the complete body.]`
 }
 
 /**

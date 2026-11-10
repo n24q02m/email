@@ -174,12 +174,64 @@ describe('messages - read', () => {
       max_chars: 5
     })
 
-    expect(result.body_text).toBe('01234')
+    expect(result.body_text).toBe(
+      '01234\n\n[Truncated: showing 5 of 10 characters (5 omitted). Pass full:true for the complete body.]'
+    )
     expect(result.preview).toBe(true)
     expect(result.body_truncated).toBe(true)
     expect(result.body_char_count).toBe(10)
     expect(result.body_limit).toBe(5)
+    expect(result.body_truncation_hint).toContain('Body is 10 characters')
     expect(result.attachments).toEqual([{ filename: 'report.pdf', content_type: 'application/pdf', size: 123 }])
+  })
+
+  it('truncates by default and reports the true body length in the marker', async () => {
+    const largeBody = 'x'.repeat(9_000)
+    mockReadEmail.mockResolvedValue({
+      account_id: 'user1_gmail_com',
+      account_email: 'user1@gmail.com',
+      uid: 42,
+      subject: 'Large',
+      from: 'sender@test.com',
+      to: 'user1@gmail.com',
+      date: '2025-01-01',
+      flags: ['\\Seen'],
+      body_text: largeBody,
+      attachments: []
+    })
+
+    const result = await messages(accounts, { action: 'read', uid: 42, account: 'user1@gmail.com' })
+
+    expect(result.preview).toBe(true)
+    expect(result.body_truncated).toBe(true)
+    expect(result.body_char_count).toBe(9_000)
+    expect(result.body_limit).toBe(4_000)
+    expect(result.body_text.startsWith('x'.repeat(4_000))).toBe(true)
+    expect(result.body_text).toContain(
+      '[Truncated: showing 4000 of 9000 characters (5000 omitted). Pass full:true for the complete body.]'
+    )
+  })
+
+  it('returns the complete body when full is true', async () => {
+    const largeBody = 'y'.repeat(9_000)
+    mockReadEmail.mockResolvedValue({
+      account_id: 'user1_gmail_com',
+      account_email: 'user1@gmail.com',
+      uid: 42,
+      subject: 'Large',
+      from: 'sender@test.com',
+      to: 'user1@gmail.com',
+      date: '2025-01-01',
+      flags: ['\\Seen'],
+      body_text: largeBody,
+      attachments: []
+    })
+
+    const result = await messages(accounts, { action: 'read', uid: 42, account: 'user1@gmail.com', full: true })
+
+    expect(result.preview).toBe(false)
+    expect(result.body_text).toBe(largeBody)
+    expect(result.body_truncated).toBeUndefined()
   })
 
   it('returns untruncated preview metadata when the body fits the limit', async () => {
