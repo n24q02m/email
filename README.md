@@ -120,7 +120,9 @@ Full per-client walkthroughs: [docs.n24q02m.com/servers/email/setup/](https://do
 
 ## CLI
 
-The package ships one binary, `email` (run via `npx @n24q02m/email`), also installed under its legacy name `better-email-mcp`. With no arguments it starts the MCP server over stdio; it also accepts one flag and one subcommand:
+The package ships one binary, `email` (run via `npx @n24q02m/email`), also installed under its legacy name `better-email-mcp`. With no arguments it starts the MCP server over stdio. Every MCP tool is also a subcommand, so the same handlers run with or without an MCP client.
+
+### Server and operator commands
 
 | Invocation | Description |
 |:-----------|:------------|
@@ -128,6 +130,23 @@ The package ships one binary, `email` (run via `npx @n24q02m/email`), also insta
 | `email --http` | Start the server in **HTTP** (single-user, bearer token) mode. Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
 | `email auth [outlook] <email> [--client-id=<id>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.better-email-mcp/tokens.json`. The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
 | `email logout [<email>]` | Clear the locally stored Outlook token(s). Omit `<email>` to clear every stored token |
+| `email config status` / `email status` | Report whether a stored credential file exists (never prints credential values) |
+| `email config delete --yes` | Delete the stored credential file |
+| `email doctor` | Node, credential backend, store-directory, and session checks |
+
+### Tool commands
+
+Each tool keeps its MCP name and actions; its JSON-Schema properties become `--flags`, so the CLI cannot accept an argument the tool does not take. Output is human-readable text, or the tool's exact JSON envelope with `--json`. A failure prints one message to stderr and exits 1.
+
+| Command | Actions | Example |
+|:--------|:--------|:--------|
+| `email messages <action>` | `search`, `read`, `mark_read`, `mark_unread`, `flag`, `unflag`, `move`, `archive`, `trash`, `new`, `reply`, `forward` | `email messages search --query "UNREAD FROM boss@company.com" --limit 5 --json` |
+| `email folders <action>` | `list`, `status` | `email folders list --account user@gmail.com` |
+| `email attachments <action>` | `list`, `download` | `email attachments download --account user@gmail.com --uid 42 --filename invoice.pdf --json` |
+| `email config-tool <action>` | `status`, `setup_status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | `email config-tool cache_clear --json` |
+| `email help <tool_name>` | - | `email help messages` |
+
+`config-tool` is the MCP `config` tool; the bare `email config` command stays the operator command for the stored credential file (its `status`/`delete` actions predate the tool surface). `email --help` lists tool commands and operator commands as separate groups, and `email <command> --help` prints that command's actions and flags.
 
 ```bash
 # stdio server (normally launched by your MCP client, not by hand)
@@ -141,6 +160,19 @@ npx @n24q02m/email auth user@outlook.com
 
 # Sign out of a single account (or omit the email to clear all)
 npx @n24q02m/email logout user@outlook.com
+
+# Search, read, and organize mail through the same handlers the MCP tools use
+npx @n24q02m/email messages search --query UNREAD --limit 5 --json
+npx @n24q02m/email messages read --uid 4211 --preview --max_chars 800
+npx @n24q02m/email messages mark_read --uids 12,13,14
+npx @n24q02m/email folders list --account user@gmail.com
+
+# Attachments and credential state
+npx @n24q02m/email attachments list --account user@gmail.com --uid 42 --json
+npx @n24q02m/email config-tool status --json
+
+# Per-command actions and flags come from the tool schema
+npx @n24q02m/email messages --help
 ```
 
 `auth`/`logout` are only for Outlook/Hotmail/Live addresses -- other providers use an App Password in `EMAIL_CREDENTIALS`. See [Remote (HTTP Mode)](#remote-http-mode) for the HTTP config.
