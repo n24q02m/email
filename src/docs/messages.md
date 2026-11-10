@@ -4,8 +4,8 @@
 Email messages: search, read, mark_read, mark_unread, flag, unflag, move, archive, trash, new, reply, forward.
 
 ## Important
-- **read** returns the full clean plain-text body by default (HTML stripped for LLM token savings)
-- Set `preview: true` for a bounded body preview. Preview responses include `body_truncated`, `body_char_count`, and `body_limit`; `max_chars` defaults to 4000 and is capped at 100000.
+- **read** returns a bounded body preview by default (4000 characters, HTML stripped for LLM token savings); the truncated text ends with an explicit `[Truncated: showing N of M characters ...]` marker and the response adds `body_truncated`, `body_char_count`, `body_limit`, and `body_truncation_hint`
+- Pass `full: true` (or `preview: false`) for the complete body; `preview: <number>` or `max_chars` sets the budget (1-100000, default 4000)
 - **UIDs are per-account and per-folder** - always specify account for modify operations
 - Query language supports compound filters: `UNREAD SINCE 2024-01-01`
 - **reply** automatically sets In-Reply-To and References headers for threading
@@ -39,17 +39,19 @@ Query shortcuts:
 - Any other text is treated as subject search
 
 ### read
-Read a single email by UID. Omit `preview` for the full clean body, or set `preview: true` for a bounded response.
+Read a single email by UID. Reads are bounded by default (4000 characters); pass `full: true` for the complete clean body.
 ```json
 {"action": "read", "account": "user@gmail.com", "uid": 12345, "folder": "INBOX"}
 ```
 ```json
-{"action": "read", "account": "user@gmail.com", "uid": 12345, "preview": true, "max_chars": 4000}
+{"action": "read", "account": "user@gmail.com", "uid": 12345, "max_chars": 8000}
 ```
-Preview responses retain the message metadata and return:
+Bounded responses retain the message metadata and return:
+- a `body_text` ending in `[Truncated: showing <limit> of <total> characters (<omitted> omitted). Pass full:true for the complete body.]` when the body exceeded the limit
 - `body_truncated` - whether the body was shortened
 - `body_char_count` - full body length in characters
 - `body_limit` - applied preview limit
+- `body_truncation_hint` - present only when truncated, naming the full length and how to fetch it
 
 ### mark_read
 ```json
@@ -121,8 +123,9 @@ Forward an email. The original body is appended with a separator.
 - `folder` - Mailbox folder (default: INBOX)
 - `limit` - Max search results (default: 20)
 - `uid` - Single email UID
-- `preview` - Return a bounded body preview for read (default: false)
-- `max_chars` - Preview body limit, integer 1-100000 (default: 4000 when preview is true)
+- `preview` - Bounded body preview for read (default: true; `false` reads the full body, a number sets the budget)
+- `max_chars` - Preview body limit, integer 1-100000 (default: 4000)
+- `full` - Return the complete message body, bypassing the default preview
 - `uids` - Multiple email UIDs for batch operations
 - `destination` - Target folder for move action
 - `to` - Recipient email address (required for new/forward, optional for reply)
