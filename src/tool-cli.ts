@@ -25,8 +25,11 @@ import { invokeTool, TOOLS } from './tools/registry.js'
 const PROGRAM = 'email'
 
 /**
- * CLI command name -> MCP tool name. Every tool is exposed; only the `config`
- * tool needs a short name because the operator `config` command owns its own.
+ * CLI command name -> MCP tool name. Every registered tool needs a row: the
+ * parity test in `tool-cli.test.ts` derives the registry's tool names and fails
+ * when one has no command, so a tool cannot stay MCP-only by accident. Only the
+ * `config` tool needs a short name because the operator `config` command owns
+ * its own.
  */
 export const TOOL_COMMANDS: Record<string, string> = {
   messages: 'messages',
@@ -34,6 +37,26 @@ export const TOOL_COMMANDS: Record<string, string> = {
   attachments: 'attachments',
   'config-tool': 'config',
   help: 'help'
+}
+
+/** The CLI command that runs `toolName`, or `undefined` when the tool has no row. */
+export function commandForTool(toolName: string): string | undefined {
+  return Object.keys(TOOL_COMMANDS).find((command) => TOOL_COMMANDS[command] === toolName)
+}
+
+/**
+ * Tool names with no CLI command, in input order.
+ *
+ * The parity test asserts this is empty for `TOOLS`, so a registry tool added
+ * without a `TOOL_COMMANDS` row fails CI together with the tool's name instead
+ * of quietly reaching only MCP clients.
+ */
+export function unmappedTools(
+  toolNames: readonly string[],
+  commands: Record<string, string> = TOOL_COMMANDS
+): string[] {
+  const mapped = new Set(Object.values(commands))
+  return toolNames.filter((name) => !mapped.has(name))
 }
 
 /** Tools that answer without credentials (docs and the credential lifecycle itself). */
@@ -408,7 +431,14 @@ function errorText(error: unknown): string {
  * missing credentials, or a handler error). Never throws.
  */
 export async function runToolCommand(toolName: string, argv: string[]): Promise<number> {
-  const command = Object.keys(TOOL_COMMANDS).find((name) => TOOL_COMMANDS[name] === toolName) ?? toolName
+  const command = commandForTool(toolName)
+  if (command === undefined) {
+    // Unreachable while the registry parity test holds: every tool has a
+    // command. Refuse instead of guessing the raw tool name, which would make
+    // an unmapped tool silently callable and invisible to the help text.
+    process.stderr.write(`Tool ${toolName} has no CLI command; add it to TOOL_COMMANDS.\n`)
+    return 1
+  }
   let definition: ToolDefinition
   let parsed: ParsedInvocation
   try {
