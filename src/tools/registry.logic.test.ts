@@ -20,6 +20,11 @@ vi.mock('../credential-state.js', () => ({
 
 import { registerTools } from './registry.js'
 
+// Deterministic credential source: the lazy `loadConfig()` reload must not pick
+// up whatever accounts file the machine running the tests happens to have.
+process.env.EMAIL_ACCOUNTS_FILE = 'off'
+process.env.EMAIL_CREDENTIALS = ''
+
 describe('registerTools', () => {
   it('should return error when no arguments are provided', async () => {
     // Mock server

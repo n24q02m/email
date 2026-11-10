@@ -1,6 +1,15 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from './config.js'
-import { loadConfig, parseCredentials, resolveAccount, resolveAccounts, resolveSingleAccount } from './config.js'
+import {
+  accountMode,
+  enabledAccounts,
+  isAccountEnabled,
+  loadConfig,
+  parseCredentials,
+  resolveAccount,
+  resolveAccounts,
+  resolveSingleAccount
+} from './config.js'
 import { EmailMCPError } from './errors.js'
 
 describe('parseCredentials', () => {
@@ -274,6 +283,16 @@ describe('parseCredentials — custom IMAP host and port (issue #610)', () => {
 })
 
 describe('loadConfig', () => {
+  beforeEach(() => {
+    // Keep the ambient machine out of these checks: no accounts file is part of
+    // the env-var cases (the file cases live in accounts-file.test.ts).
+    vi.stubEnv('EMAIL_ACCOUNTS_FILE', 'off')
+  })
+
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
   it('returns empty array when EMAIL_CREDENTIALS is not set', async () => {
     const original = process.env.EMAIL_CREDENTIALS
     delete process.env.EMAIL_CREDENTIALS
@@ -421,6 +440,96 @@ describe('resolveSingleAccount', () => {
       expect(e).toBeInstanceOf(EmailMCPError)
       expect((e as EmailMCPError).code).toBe('AMBIGUOUS_ACCOUNT')
     }
+  })
+})
+
+describe('account mode', () => {
+  const disabledAccount: AccountConfig = { ...testAccounts[1]!, enabled: false }
+
+  it('reports none, single and multi from the enabled accounts', () => {
+    expect(accountMode([])).toBe('none')
+    expect(accountMode([testAccounts[0]!])).toBe('single')
+    expect(accountMode(testAccounts)).toBe('multi')
+    expect(accountMode([testAccounts[0]!, disabledAccount])).toBe('single')
+    expect(accountMode([disabledAccount])).toBe('none')
+  })
+
+  it('treats a missing enabled flag as enabled and false as disabled', () => {
+    expect(isAccountEnabled(testAccounts[0]!)).toBe(true)
+    expect(isAccountEnabled(disabledAccount)).toBe(false)
+    expect(enabledAccounts([testAccounts[0]!, disabledAccount])).toEqual([testAccounts[0]])
+  })
+})
+
+describe('resolveAccounts with disabled accounts', () => {
+  const disabledAccount: AccountConfig = { ...testAccounts[1]!, enabled: false }
+
+  it('leaves disabled accounts out of a fan-out', () => {
+    const result = resolveAccounts([testAccounts[0]!, disabledAccount])
+    expect(result.map((account) => account.email)).toEqual(['user1@gmail.com'])
+  })
+
+  it('rejects a query that names only a disabled account', () => {
+    try {
+      resolveAccounts([testAccounts[0]!, disabledAccount], 'user2@outlook.com')
+    } catch (error) {
+      const emailError = error as EmailMCPError
+      expect(emailError.code).toBe('ACCOUNT_DISABLED')
+      expect(emailError.message).toContain('user2@outlook.com')
+      return
+    }
+    throw new Error('expected ACCOUNT_DISABLED')
+  })
+
+  it('names the disabled accounts when every account is disabled', () => {
+    try {
+      resolveAccounts([disabledAccount, { ...testAccounts[0]!, enabled: false }])
+    } catch (error) {
+      const emailError = error as EmailMCPError
+      expect(emailError.code).toBe('NO_ACCOUNTS')
+      expect(emailError.message).toContain('Every configured account is disabled')
+      expect(emailError.suggestion).toContain('user2@outlook.com')
+      return
+    }
+    throw new Error('expected NO_ACCOUNTS')
+  })
+})
+
+describe('resolveSingleAccount ambiguity', () => {
+  it('names every account to choose from when no filter is given', () => {
+    try {
+      resolveSingleAccount(testAccounts)
+    } catch (error) {
+      const emailError = error as EmailMCPError
+      expect(emailError.code).toBe('AMBIGUOUS_ACCOUNT')
+      expect(emailError.message).toContain('2 accounts are configured')
+      expect(emailError.message).toContain('user1@gmail.com')
+      expect(emailError.message).toContain('user2@outlook.com')
+      expect(emailError.suggestion).toContain('account:')
+      return
+    }
+    throw new Error('expected AMBIGUOUS_ACCOUNT')
+  })
+
+  it('names the matches when a filter matches several accounts', () => {
+    try {
+      resolveSingleAccount(testAccounts, 'user')
+    } catch (error) {
+      const emailError = error as EmailMCPError
+      expect(emailError.code).toBe('AMBIGUOUS_ACCOUNT')
+      expect(emailError.suggestion).toContain('user1@gmail.com')
+      expect(emailError.suggestion).toContain('user2@outlook.com')
+      return
+    }
+    throw new Error('expected AMBIGUOUS_ACCOUNT')
+  })
+
+  it('never selects a disabled account', () => {
+    const disabledOnly = { ...testAccounts[0]!, enabled: false }
+    expect(() => resolveSingleAccount([disabledOnly])).toThrow(/No email accounts configured/)
+    expect(resolveSingleAccount([testAccounts[0]!, { ...testAccounts[1]!, enabled: false }]).email).toBe(
+      'user1@gmail.com'
+    )
   })
 })
 

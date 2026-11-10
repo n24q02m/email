@@ -43,6 +43,15 @@ function describeFolderError(account: AccountConfig, error: unknown): string {
     return `OAuth/IMAP authentication failed or was rejected${response}`
   }
 
+  // A password account whose login was refused: the server's own text ("Invalid
+  // credentials") is the actionable part, and imapflow's generic command-failure
+  // text is not. Named per account by the caller, so the failure stays
+  // attributable when other accounts keep returning folders.
+  if (raw.authenticationFailed === true) {
+    const response = details.length > 0 ? ` (${details.join('; ')})` : ''
+    return `IMAP authentication failed - check the password or app password${response}`
+  }
+
   return typeof raw.message === 'string' ? raw.message : String(error)
 }
 
@@ -68,13 +77,8 @@ export async function folders(accounts: AccountConfig[], input: FoldersInput): P
  * Read STATUS metadata for one exact account and mailbox.
  */
 async function handleStatus(accounts: AccountConfig[], input: FoldersInput): Promise<any> {
-  if (!input.account?.trim()) {
-    throw new EmailMCPError(
-      'account is required for status action',
-      'VALIDATION_ERROR',
-      'Provide exactly one configured account email or account ID'
-    )
-  }
+  // The account is resolved, not demanded: one configured account is used as-is,
+  // and several are rejected with every account named (resolveSingleAccount).
   if (!input.folder?.trim()) {
     throw new EmailMCPError(
       'folder is required for status action',

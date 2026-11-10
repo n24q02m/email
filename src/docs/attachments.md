@@ -7,7 +7,7 @@ List and download email attachments.
 - **list** returns metadata only (filename, content_type, size)
 - **download** returns base64-encoded content
 - Large attachments may consume significant tokens - check size before downloading
-- `account` and `uid` are required for all actions
+- `uid` is required for all actions; `account` may be omitted while exactly one account is enabled, and must name one of several
 
 ## Actions
 
@@ -28,7 +28,7 @@ Download a specific attachment by filename. Returns base64-encoded content.
 
 ## Parameters
 - `action` - Action to perform (required): list, download
-- `account` - Account email (required)
+- `account` - Account email (required only when more than one account is enabled)
 - `uid` - Email UID (required)
 - `folder` - Mailbox folder (default: INBOX)
 - `filename` - Attachment filename (required for download, case-insensitive)

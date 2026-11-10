@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { resolveCredentialState } from './credential-state.js'
+import { discoverAccountsFile } from './tools/helpers/accounts-file.js'
 import { loadConfig } from './tools/helpers/config.js'
 import { registerTools } from './tools/registry.js'
 
@@ -57,23 +58,28 @@ export async function initServer() {
     return
   }
 
-  // Default: stdio mode. credential-state.ts:loadCredsFromEnv accepts EITHER:
-  //   (a) EMAIL_CREDENTIALS directly ("user:app-password" or multi-account
+  // Default: stdio mode. credential-state.ts:loadCredsFromEnv accepts ANY of:
+  //   (a) EMAIL_ACCOUNTS_FILE (or <data dir>/accounts.toml) -- multi-account,
+  //   (b) EMAIL_CREDENTIALS directly ("user:app-password" or multi-account
   //       "user1:pass1,user2:pass2"), OR
-  //   (b) EMAIL_USER + EMAIL_APP_PASSWORD pair (merged into EMAIL_CREDENTIALS at boot).
+  //   (c) EMAIL_USER + EMAIL_APP_PASSWORD pair (merged into EMAIL_CREDENTIALS at boot).
   // Match handler to loader semantics.
+  const hasAccountsFile = (await discoverAccountsFile()) !== null
   const hasCredentials = !!process.env.EMAIL_CREDENTIALS
   const hasUserAppPair = !!(process.env.EMAIL_USER && process.env.EMAIL_APP_PASSWORD)
-  if (!hasCredentials && !hasUserAppPair) {
+  if (!hasAccountsFile && !hasCredentials && !hasUserAppPair) {
     const msg = `[${SERVER_NAME}] Missing required env vars for stdio mode.
 
-stdio mode reads credentials from EITHER:
+stdio mode reads credentials from ANY of:
+  - EMAIL_ACCOUNTS_FILE (an accounts.toml, or <data dir>/accounts.toml by default),
   - EMAIL_CREDENTIALS (combined "user:app-password" or "user1:pass1,user2:pass2"), OR
   - EMAIL_USER + EMAIL_APP_PASSWORD pair (merged at boot)
 
 Options:
   1. Set env in plugin config:
      {"command": "npx", "args": [...], "env": {"EMAIL_CREDENTIALS": "user:app-password"}}
+     OR
+     {"command": "npx", "args": [...], "env": {"EMAIL_ACCOUNTS_FILE": "/path/to/accounts.toml"}}
      OR
      {"command": "npx", "args": [...], "env": {"EMAIL_USER": "...", "EMAIL_APP_PASSWORD": "..."}}
 

@@ -3,6 +3,7 @@
  * Parses EMAIL_CREDENTIALS env var and auto-discovers IMAP/SMTP settings
  */
 
+import { discoverAccountsFile, readAccountsFile } from './accounts-file.js'
 import { EmailMCPError } from './errors.js'
 import type { OAuth2Tokens } from './oauth2.js'
 import { isOutlookDomain, loadStoredTokens } from './oauth2.js'
@@ -21,6 +22,8 @@ export interface AccountConfig {
   imap: ServerConfig
   smtp: ServerConfig
   oauth2?: OAuth2Tokens
+  /** `false` only for an accounts-file row that says `enabled = false`. */
+  enabled?: boolean
 }
 
 /** Well-known email provider settings */
@@ -358,6 +361,63 @@ async function handleOAuth2OnlyEntry(email: string): Promise<AccountConfig | nul
   return null
 }
 
+/** Explicit account fields, shared by the env parser and the accounts file. */
+export interface AccountFields {
+  email: string
+  password: string
+  /** Account id; defaults to the email with `@`/`.` replaced by `_`. */
+  id?: string
+  /** `false` keeps the account configured but out of every tool call. */
+  enabled?: boolean
+  imapHost?: string
+  imapPort?: number
+  smtpHost?: string
+  smtpPort?: number
+  smtpSecurity?: SmtpSecurity
+}
+
+/**
+ * Build one account from explicit fields. This is the single construction path
+ * for both credential sources: the `EMAIL_CREDENTIALS` parser below hands it the
+ * segments it split, and the accounts file hands it the TOML row, so provider
+ * discovery, port defaults and Outlook OAuth2 behave identically either way.
+ *
+ * Returns `null` when IMAP/SMTP cannot be resolved (unknown provider and no
+ * explicit host) — the caller decides whether that is a skip or an error.
+ */
+export async function buildAccount(fields: AccountFields): Promise<AccountConfig | null> {
+  const email = fields.email.trim()
+
+  // Auto-discover or use custom host (SMTP override applied if provided)
+  const servers = resolveServerConfig(
+    email,
+    fields.imapHost,
+    fields.imapPort,
+    fields.smtpHost,
+    fields.smtpPort,
+    fields.smtpSecurity
+  )
+  if (!servers) return null
+
+  const account: AccountConfig = {
+    id: fields.id?.trim() || emailToId(email),
+    email,
+    password: fields.password,
+    authType: 'password',
+    imap: servers.imap,
+    smtp: servers.smtp,
+    ...(fields.enabled === false ? { enabled: false } : {})
+  }
+
+  // Outlook domains use OAuth2 by default. An explicit custom IMAP host means
+  // the account is routed through a proxy with password auth — honour that.
+  if (!fields.imapHost) {
+    await applyOutlookOAuth2(account)
+  }
+
+  return account
+}
+
 /**
  * Handle a standard password-based entry
  */
@@ -365,33 +425,15 @@ async function handlePasswordEntry(email: string, parts: string[]): Promise<Acco
   const { password, customImapHost, customImapPort, customSmtpHost, customSmtpPort, customSmtpSecurity } =
     parsePasswordAndHost(parts)
 
-  // Auto-discover or use custom host (SMTP override applied if provided)
-  const servers = resolveServerConfig(
-    email,
-    customImapHost,
-    customImapPort,
-    customSmtpHost,
-    customSmtpPort,
-    customSmtpSecurity
-  )
-  if (!servers) return null
-
-  const account: AccountConfig = {
-    id: emailToId(email),
+  return buildAccount({
     email,
     password,
-    authType: 'password',
-    imap: servers.imap,
-    smtp: servers.smtp
-  }
-
-  // Outlook domains use OAuth2 by default. An explicit custom IMAP host means
-  // the account is routed through a proxy with password auth — honour that.
-  if (!customImapHost) {
-    await applyOutlookOAuth2(account)
-  }
-
-  return account
+    imapHost: customImapHost,
+    imapPort: customImapPort,
+    smtpHost: customSmtpHost,
+    smtpPort: customSmtpPort,
+    smtpSecurity: customSmtpSecurity
+  })
 }
 
 /**
@@ -443,14 +485,71 @@ export async function parseCredentials(envValue: string): Promise<AccountConfig[
 }
 
 /**
- * Load and validate configuration from environment
+ * Load and validate configuration.
+ *
+ * Resolution order: `EMAIL_ACCOUNTS_FILE` (when a file is selected) wins over
+ * every env var, then `EMAIL_CREDENTIALS` (which `resolveCredentialState` may
+ * have filled from `EMAIL_USER` + `EMAIL_APP_PASSWORD`, the legacy encrypted
+ * config or saved Outlook tokens). Returns `[]` when nothing is configured.
  */
 export async function loadConfig(): Promise<AccountConfig[]> {
+  const accountsFile = await discoverAccountsFile()
+  if (accountsFile) {
+    return loadAccountsFile(accountsFile.path)
+  }
+
   const credentials = process.env.EMAIL_CREDENTIALS
   if (!credentials) {
     return []
   }
   return parseCredentials(credentials)
+}
+
+/**
+ * Turn validated accounts-file rows into accounts.
+ *
+ * A row whose servers cannot be resolved is an error naming that account, never
+ * a silent skip: a mailbox that vanishes from the list is worse than a boot
+ * failure that says which row to fix.
+ */
+async function loadAccountsFile(path: string): Promise<AccountConfig[]> {
+  const entries = await readAccountsFile(path)
+  return Promise.all(
+    entries.map(async (entry) => {
+      const account = await buildAccount(entry)
+      if (!account) {
+        throw new EmailMCPError(
+          `Cannot resolve IMAP/SMTP settings for accounts.${entry.id} (${entry.email})`,
+          'ACCOUNTS_FILE_INVALID',
+          `Set imap_host (and smtp_host for a non-standard server) in ${path}`
+        )
+      }
+      return account
+    })
+  )
+}
+
+/** The mode the current account list runs in, as reported by `config status`. */
+export type AccountMode = 'none' | 'single' | 'multi'
+
+/** Whether an account takes part in tool calls (`enabled = false` opts out). */
+export function isAccountEnabled(account: AccountConfig): boolean {
+  return account.enabled !== false
+}
+
+/** Accounts that tool calls may use. */
+export function enabledAccounts(accounts: AccountConfig[]): AccountConfig[] {
+  return accounts.filter(isAccountEnabled)
+}
+
+/**
+ * `single` with exactly one usable account, `multi` with two or more, `none`
+ * when nothing is configured (or every row is disabled).
+ */
+export function accountMode(accounts: AccountConfig[]): AccountMode {
+  const enabled = enabledAccounts(accounts).length
+  if (enabled === 0) return 'none'
+  return enabled === 1 ? 'single' : 'multi'
 }
 
 export function resolveAccount(accounts: AccountConfig[], query: string): AccountConfig {
@@ -461,7 +560,9 @@ export function resolveAccount(accounts: AccountConfig[], query: string): Accoun
 
   for (const a of accounts) {
     const lowerEmail = a.email.toLowerCase()
-    if (lowerEmail === lower || a.id === lower) exact.push(a)
+    // The id is matched case-insensitively too: an accounts-file table key is
+    // operator-chosen (`[accounts.Work]`), not normalised like a derived id.
+    if (lowerEmail === lower || a.id.toLowerCase() === lower) exact.push(a)
     else if (lowerEmail.includes(lower)) partial.push(a)
   }
 
@@ -486,31 +587,69 @@ export function resolveAccount(accounts: AccountConfig[], query: string): Accoun
 }
 
 /**
- * Resolve a single account, with optional filter.
- * When filter is omitted and there's exactly one account, returns it.
- * Throws AMBIGUOUS_ACCOUNT if multiple accounts match.
+ * Resolve the one account an action must act on, with optional filter.
+ *
+ * When a filter is omitted and exactly one account is enabled it is used. With
+ * several enabled accounts there is no safe guess, so the call is rejected and
+ * the error names every account to choose from. `enabled = false` rows are never
+ * selected.
  */
 export function resolveSingleAccount(accounts: AccountConfig[], accountFilter?: string): AccountConfig {
+  if (!accountFilter?.trim()) {
+    const usable = enabledAccounts(accounts)
+    if (usable.length === 0) {
+      throw new EmailMCPError(
+        'No email accounts configured',
+        'NO_ACCOUNTS',
+        'Set EMAIL_ACCOUNTS_FILE (accounts.toml), EMAIL_CREDENTIALS, or EMAIL_USER + EMAIL_APP_PASSWORD'
+      )
+    }
+    if (usable.length > 1) {
+      const choices = usable.map((a) => a.email).join(', ')
+      throw new EmailMCPError(
+        `Account is required: ${usable.length} accounts are configured (${choices})`,
+        'AMBIGUOUS_ACCOUNT',
+        'Pass account: the exact address, or the account id'
+      )
+    }
+    return usable[0]!
+  }
+
   const resolved = resolveAccounts(accounts, accountFilter)
   if (resolved.length > 1) {
+    const choices = resolved.map((a) => a.email).join(', ')
     throw new EmailMCPError(
-      'Multiple accounts matched. Specify the exact account email.',
+      `Multiple accounts matched "${accountFilter}". Specify the exact account email.`,
       'AMBIGUOUS_ACCOUNT',
-      `Matched: ${resolved.map((a) => a.email).join(', ')}`
+      `Matched: ${choices}`
     )
   }
   return resolved[0]!
 }
 
+/**
+ * Resolve the accounts a fan-out action should read from.
+ *
+ * Disabled rows are skipped; a query that names only a disabled account fails
+ * with `ACCOUNT_DISABLED` instead of returning an empty fan-out.
+ */
 export function resolveAccounts(accounts: AccountConfig[], query?: string): AccountConfig[] {
   if (accounts.length === 0) {
     throw new EmailMCPError(
       'No email accounts configured',
       'NO_ACCOUNTS',
-      'Set EMAIL_CREDENTIALS env var. Format: email1:password1,email2:password2'
+      'Set EMAIL_ACCOUNTS_FILE (accounts.toml), EMAIL_CREDENTIALS, or EMAIL_USER + EMAIL_APP_PASSWORD'
     )
   }
-  if (!query) return accounts
+  const usable = enabledAccounts(accounts)
+  if (usable.length === 0) {
+    throw new EmailMCPError(
+      'Every configured account is disabled',
+      'NO_ACCOUNTS',
+      `Set enabled = true for at least one account in the accounts file (disabled: ${accounts.map((a) => a.email).join(', ')})`
+    )
+  }
+  if (!query) return usable
   const lower = query.toLowerCase().trim()
 
   const exact: AccountConfig[] = []
@@ -518,17 +657,29 @@ export function resolveAccounts(accounts: AccountConfig[], query?: string): Acco
 
   for (const a of accounts) {
     const lowerEmail = a.email.toLowerCase()
-    if (lowerEmail === lower || a.id === lower) exact.push(a)
+    // The id is matched case-insensitively too: an accounts-file table key is
+    // operator-chosen (`[accounts.Work]`), not normalised like a derived id.
+    if (lowerEmail === lower || a.id.toLowerCase() === lower) exact.push(a)
     else if (lowerEmail.includes(lower)) partial.push(a)
   }
 
-  if (exact.length > 0) return exact
+  const matched = exact.length > 0 ? exact : partial
+  const enabledMatches = matched.filter(isAccountEnabled)
 
-  if (partial.length === 0)
+  if (enabledMatches.length === 0) {
+    if (matched.length === 0) {
+      throw new EmailMCPError(
+        `Account not found: ${query}`,
+        'ACCOUNT_NOT_FOUND',
+        `Available accounts: ${usable.map((a) => a.email).join(', ')}`
+      )
+    }
     throw new EmailMCPError(
-      `Account not found: ${query}`,
-      'ACCOUNT_NOT_FOUND',
-      `Available accounts: ${accounts.map((a) => a.email).join(', ')}`
+      `Account is disabled: ${matched.map((a) => a.email).join(', ')}`,
+      'ACCOUNT_DISABLED',
+      'Set enabled = true for this account in the accounts file'
     )
-  return partial
+  }
+
+  return enabledMatches
 }

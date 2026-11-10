@@ -103,7 +103,7 @@ receives one final release then freezes). The MCP Registry id stays
 `io.github.n24q02m/better-email-mcp`, and the legacy `better-email-mcp` command is
 kept as an alias of `email`.
 
-Multiple accounts are comma-separated: `user1@gmail.com:pass1,user2@outlook.com:pass2`. See [Configuration](#configuration) for all env vars, and [Remote (HTTP Mode)](#remote-http-mode) to run a hosted multi-user server.
+Multiple accounts are comma-separated: `user1@gmail.com:pass1,user2@outlook.com:pass2`, or listed in an [accounts file](#accounts-file-single-and-multi-account). See [Configuration](#configuration) for all env vars, and [Remote (HTTP Mode)](#remote-http-mode) to run a hosted server.
 
 Most providers use an **App Password** (no OAuth setup); Outlook/Hotmail/Live use a bundled OAuth device-code flow in HTTP mode. Settings (IMAP/SMTP host, port) are auto-discovered from the email domain.
 
@@ -262,7 +262,7 @@ Run as a single-user HTTP server, authenticated with a shared bearer token:
 
 ### Self-Hosting (HTTP Mode)
 
-Single-user mode: one shared bearer token; accounts come from env vars or `email auth outlook <address>`:
+Single-user mode: one shared bearer token. Accounts come from an [accounts file](#accounts-file-single-and-multi-account), the env vars, or `email auth outlook <address>`. The mode (`single`/`multi`) applies here too: with several accounts, a single-target tool requires `account`, and a fan-out read still returns the healthy accounts when one fails.
 
 ```bash
 export EMAIL_MCP_TOKEN_HASH='scrypt$...'  # required: the container binds 0.0.0.0 and refuses to start without it
@@ -310,7 +310,8 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 
 | Variable | Required | Default | Description |
 |:---------|:---------|:--------|:------------|
-| `EMAIL_CREDENTIALS` | Yes (stdio) | - | Email credentials, `email:app-password` per account, comma-separated for multi-account. Optional custom IMAP host/port: `email:password:imap_host:imap_port` |
+| `EMAIL_ACCOUNTS_FILE` | Alternative (stdio) | `~/.email/accounts.toml` when it exists | Path to the [accounts file](#accounts-file-single-and-multi-account). `off`, `none`, `false` or `0` disables file lookup entirely. When a file is found it wins over `EMAIL_CREDENTIALS` and `EMAIL_USER` |
+| `EMAIL_CREDENTIALS` | Alternative (stdio) | - | Email credentials, `email:app-password` per account, comma-separated for multi-account. Optional custom IMAP host/port: `email:password:imap_host:imap_port` |
 | `EMAIL_USER` | Alternative (stdio, single-account) | - | Email address. Used with `EMAIL_APP_PASSWORD` as a per-field alternative to `EMAIL_CREDENTIALS`; merged into `EMAIL_CREDENTIALS` at boot |
 | `EMAIL_APP_PASSWORD` | Alternative (stdio, single-account) | - | App password (Gmail/Yahoo/iCloud) or Outlook App Password; used with `EMAIL_USER` |
 | `EMAIL_DATA_DIR` | No | `$HOME` | Base directory for this server's own files. Saved Outlook tokens live in `<dir>/.email/tokens.json`, so the default is `~/.email/tokens.json` (the Docker image sets `HOME=/data`); a file an earlier release wrote under `<dir>/.better-email-mcp/` is copied forward on startup. A relative value is resolved under `$HOME` and must stay inside it; use an absolute path to point at a mounted volume |
@@ -323,11 +324,74 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `OUTLOOK_SCOPES` | No | `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access` | Space-separated scope list. Narrow it (e.g. drop `SMTP.Send`) for a read-only deployment — a grant consented with fewer scopes cannot be refreshed against the full list |
 | `OUTLOOK_EXTRA_DOMAINS` | No | - | Comma-separated domains routed to OAuth in addition to `outlook.com`/`hotmail.com`/`live.com`. Needed for a Microsoft 365 mailbox on your own domain, which otherwise looks like a password account |
 
+### Account modes
+
+Whatever the credential source, the server runs in one of two account modes, and
+reports which one is active:
+
+| Mode | When | Behaviour |
+|:-----|:-----|:----------|
+| `single` | exactly one enabled account | Every tool uses that account. `account` may be omitted, and is used to name it when given |
+| `multi` | two or more enabled accounts | Read tools (`folders list`, `messages search`, `messages read`) fan out over every enabled account. A tool that acts on one mailbox (`send`, `reply`, `forward`, `move`, `trash`, `attachments`) requires `account`; omitting it is rejected with the list of accounts to choose from instead of guessing |
+
+`config status` returns `mode` (`single`, `multi`, or `none` when nothing is
+configured or every row is disabled), `accounts` with the enabled addresses, and
+`disabled_accounts` when the accounts file opts a row out.
+
+**Isolation guarantee.** In `multi` mode one failing account never hides the
+others: a fan-out read that fails for one account (wrong password, IMAP connect
+error, missing or expired OAuth token) still returns every other account's
+results, and the failed entry carries its own `account_id`/`account_email` and
+error message. A single-target action is only rejected when the account is
+genuinely ambiguous, and the rejection names the accounts.
+
+### Accounts file (single and multi account)
+
+For a deployment that keeps its mailboxes in a file rather than a comma-separated
+env var, point `EMAIL_ACCOUNTS_FILE` at a TOML file (the same shape hull uses for
+its `users.toml`):
+
+```toml
+[accounts.personal]
+email = "me@gmail.com"
+password = "app-password"
+
+[accounts.work]
+email = "me@company.com"
+password = "app-password"
+imap_host = "imap.company.com"    # optional; skips provider auto-discovery
+imap_port = 993                   # optional, default 993 with a custom host
+smtp_host = "smtp.company.com"    # optional, default: guessed from imap_host
+smtp_port = 587                   # optional
+smtp_security = "starttls"        # optional: tls | ssl | starttls | none
+enabled = true                    # optional; false keeps the row but skips it
+```
+
+When `EMAIL_ACCOUNTS_FILE` is unset, `~/.email/accounts.toml` is used if it
+exists (relative paths resolve against `$HOME`; the directory is
+`$EMAIL_DATA_DIR/.email/` when `EMAIL_DATA_DIR` is set). Set
+`EMAIL_ACCOUNTS_FILE=off` (or `none`/`false`/`0`) to disable file lookup and use
+the env vars only. A file that is selected explicitly and cannot be read is a
+boot error rather than a silent fallback.
+
+Validation is strict, so a typo cannot degrade into "no accounts configured":
+unknown keys, a duplicate mailbox, an empty file, a file with no
+`[accounts.<id>]` table, and a row whose IMAP/SMTP cannot be resolved are all
+errors that name the file (and the offending account id).
+
+Precedence, highest first: accounts file → `EMAIL_CREDENTIALS` →
+`EMAIL_USER` + `EMAIL_APP_PASSWORD` → legacy encrypted `config.enc` → saved
+Outlook tokens.
+
 ### Multiple Accounts
 
 ```bash
 EMAIL_CREDENTIALS=user1@gmail.com:pass1,user2@outlook.com:pass2,user3@yahoo.com:pass3
 ```
+
+For more than a couple of mailboxes, prefer the [accounts file](#accounts-file-single-and-multi-account):
+it carries per-account host/port/security settings and can disable a row without
+deleting it.
 
 ### Custom IMAP Host
 

@@ -75,8 +75,8 @@ export async function startHttp(): Promise<void> {
   console.error(`[${SERVER_NAME}] HTTP mode on http://${handle.host}:${handle.port}/mcp (auth: ${auth.mode})`)
   if (accounts.length === 0) {
     console.error(
-      `[${SERVER_NAME}] No email accounts configured. Set EMAIL_CREDENTIALS or EMAIL_USER + EMAIL_APP_PASSWORD, ` +
-        `or run "email auth outlook <address>".`
+      `[${SERVER_NAME}] No email accounts configured. Set EMAIL_ACCOUNTS_FILE (accounts.toml), ` +
+        `EMAIL_CREDENTIALS or EMAIL_USER + EMAIL_APP_PASSWORD, or run "email auth outlook <address>".`
     )
   }
 

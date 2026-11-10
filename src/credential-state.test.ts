@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock all external dependencies BEFORE importing the module under test
@@ -23,6 +26,9 @@ describe('credential-state', () => {
     delete process.env.EMAIL_USER
     delete process.env.EMAIL_APP_PASSWORD
     delete process.env.EMAIL_PROVIDER
+    // Never consult the developer's own accounts file: the cases that need one
+    // point EMAIL_ACCOUNTS_FILE at a temp file explicitly.
+    process.env.EMAIL_ACCOUNTS_FILE = 'off'
     // Re-import to get fresh module state
     mod = await import('./credential-state.js')
   })
@@ -32,6 +38,7 @@ describe('credential-state', () => {
     delete process.env.EMAIL_USER
     delete process.env.EMAIL_APP_PASSWORD
     delete process.env.EMAIL_PROVIDER
+    delete process.env.EMAIL_ACCOUNTS_FILE
     vi.restoreAllMocks()
   })
 
@@ -151,6 +158,60 @@ describe('credential-state', () => {
 
       const result = await mod.resolveCredentialState()
       expect(result).toBe('awaiting_setup')
+    })
+    it('returns configured from the accounts file without touching EMAIL_CREDENTIALS', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'email-state-'))
+      try {
+        const path = join(dir, 'accounts.toml')
+        await writeFile(path, '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\n', 'utf8')
+        process.env.EMAIL_ACCOUNTS_FILE = path
+        process.env.EMAIL_CREDENTIALS = 'env@gmail.com:env-pass'
+
+        const result = await mod.resolveCredentialState()
+
+        expect(result).toBe('configured')
+        // The file stays the source of truth: no env string is synthesised from it.
+        expect(process.env.EMAIL_CREDENTIALS).toBe('env@gmail.com:env-pass')
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('wins over the legacy config and saved OAuth tokens', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'email-state-'))
+      try {
+        const path = join(dir, 'accounts.toml')
+        await writeFile(path, '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\n', 'utf8')
+        process.env.EMAIL_ACCOUNTS_FILE = path
+        vi.mocked(resolveConfig).mockResolvedValue({ config: { EMAIL_CREDENTIALS: 'A:B' }, source: 'file' } as any)
+        vi.mocked(loadOutlookEmails).mockResolvedValue(['E1'])
+
+        expect(await mod.resolveCredentialState()).toBe('configured')
+        expect(resolveConfig).not.toHaveBeenCalled()
+        expect(loadOutlookEmails).not.toHaveBeenCalled()
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
+    })
+
+    it('fails closed when the named accounts file is missing', async () => {
+      process.env.EMAIL_ACCOUNTS_FILE = join(tmpdir(), 'email-state-missing', 'accounts.toml')
+
+      await expect(mod.resolveCredentialState()).rejects.toMatchObject({ code: 'ACCOUNTS_FILE_MISSING' })
+      expect(mod.getState()).toBe('awaiting_setup')
+    })
+
+    it('fails closed when the accounts file cannot be parsed', async () => {
+      const dir = await mkdtemp(join(tmpdir(), 'email-state-'))
+      try {
+        const path = join(dir, 'accounts.toml')
+        await writeFile(path, '[accounts.a\n', 'utf8')
+        process.env.EMAIL_ACCOUNTS_FILE = path
+
+        await expect(mod.resolveCredentialState()).rejects.toMatchObject({ code: 'ACCOUNTS_FILE_INVALID' })
+      } finally {
+        await rm(dir, { recursive: true, force: true })
+      }
     })
   })
 

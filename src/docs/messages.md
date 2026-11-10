@@ -117,8 +117,8 @@ Forward an email. The original body is appended with a separator.
 {"action": "forward", "account": "user@gmail.com", "to": "colleague@example.com", "body": "FYI, see below.", "uid": 12345}
 ```
 
-- `action` - Action to perform (required)
-- `account` - Account email filter (optional for search, required for modify)
+- `action` - Action to perform (required); `search` fans out over the enabled accounts and one failing account does not hide the others' results
+- `account` - Account email filter (optional for search; required for modify and send when more than one account is configured)
 - `query` - Search query string (default: UNSEEN)
 - `folder` - Mailbox folder (default: INBOX)
 - `limit` - Max search results (default: 20)

@@ -82,6 +82,25 @@ describe('folders - list', () => {
     expect(result.accounts[0].error).toBe('OAuth/IMAP authentication failed or was rejected (AUTHENTICATIONFAILED)')
   })
 
+  it('names a rejected password login instead of imapflow generic command failure text', async () => {
+    mockListFolders
+      .mockResolvedValueOnce([{ name: 'INBOX', path: 'INBOX', flags: [], delimiter: '/' }])
+      .mockRejectedValueOnce(
+        Object.assign(new Error(['Command', 'failed'].join(' ')), {
+          authenticationFailed: true,
+          responseText: 'Invalid credentials'
+        })
+      )
+
+    const result = await folders(accounts, { action: 'list' })
+
+    expect(result.accounts[0].folders).toHaveLength(1)
+    expect(result.accounts[1].error).toBe(
+      'IMAP authentication failed - check the password or app password (Invalid credentials)'
+    )
+    expect(result.accounts[1].error).not.toContain(['Command', 'failed'].join(' '))
+  })
+
   it('surfaces safe IMAP response fields for a generic OAuth command failure', async () => {
     mockListFolders.mockRejectedValueOnce(
       Object.assign(new Error(['Command', 'failed'].join(' ')), {
@@ -131,9 +150,17 @@ describe('folders - status', () => {
     })
   })
 
-  it('requires an explicit account', async () => {
+  it('uses the only configured account when none is named', async () => {
+    mockGetFolderStatus.mockResolvedValue({ messages: 1, unseen: 0, uid_next: 2 })
+
+    const result = await folders([accounts[0]!], { action: 'status', folder: 'INBOX' })
+
+    expect(result.account_email).toBe('user1@gmail.com')
+  })
+
+  it('names the accounts instead of guessing when several are configured', async () => {
     await expect(folders(accounts, { action: 'status', folder: 'INBOX' })).rejects.toThrow(
-      'account is required for status action'
+      /Account is required: 2 accounts are configured \(user1@gmail\.com, user2@outlook\.com\)/
     )
   })
 
