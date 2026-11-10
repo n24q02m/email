@@ -8,7 +8,7 @@
  * and the `email <tool>` CLI (`src/tool-cli.ts`) so both surfaces agree.
  */
 export const NOT_CONFIGURED_MESSAGE =
-  'Email credentials are not configured.\n\nSet EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD), or run `email auth outlook <address>` for Outlook.'
+  'Email credentials are not configured.\n\nPoint EMAIL_ACCOUNTS_FILE at an accounts.toml (multi-account), set EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD), or run `email auth outlook <address>` for Outlook.'
 
 export class EmailMCPError extends Error {
   constructor(

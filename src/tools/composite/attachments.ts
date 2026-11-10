@@ -11,8 +11,10 @@ import { getAttachment, readEmail } from '../helpers/imap-client.js'
 export interface AttachmentsInput {
   action: 'list' | 'download'
 
+  // Account: optional while exactly one is configured; required with several.
+  account?: string
+
   // Required
-  account: string
   uid: number
 
   // Optional
@@ -25,14 +27,8 @@ export interface AttachmentsInput {
  */
 export async function attachments(accounts: AccountConfig[], input: AttachmentsInput): Promise<any> {
   return withErrorHandling(async () => {
-    if (!input.account) {
-      throw new EmailMCPError(
-        'account is required for attachment operations',
-        'VALIDATION_ERROR',
-        'Provide the account email address'
-      )
-    }
-
+    // The account is resolved by each handler (resolveSingleAccount): one
+    // configured account needs no explicit name, several must be disambiguated.
     if (!input.uid) {
       throw new EmailMCPError(
         'uid is required for attachment operations',

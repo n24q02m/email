@@ -1,12 +1,14 @@
 /**
  * Non-blocking credential state management for email.
  *
- * Credentials come from env vars, the legacy encrypted config (read-only), or
- * saved Outlook OAuth tokens. There is no relay credential form: credentials are
- * supplied through env vars or the `email auth` CLI.
+ * Credentials come from the accounts file (`accounts.toml`), env vars, the
+ * legacy encrypted config (read-only), or saved Outlook OAuth tokens. There is
+ * no relay credential form: credentials are supplied through a file, env vars or
+ * the `email auth` CLI.
  */
 
 import { deleteConfig, resolveConfig } from '@n24q02m/hull/storage'
+import { discoverAccountsFile, readAccountsFile } from './tools/helpers/accounts-file.js'
 import { loadOutlookEmails } from './tools/helpers/oauth2.js'
 
 // Config namespace for hull's encrypted config.enc: resolveConfig/deleteConfig key
@@ -49,14 +51,28 @@ export function legacyCredentials(config: Record<string, string>): string {
  * Fast credential check. Called during server startup.
  *
  * Resolution order:
- * 1. ENV VARS -- EMAIL_CREDENTIALS, or EMAIL_USER + EMAIL_APP_PASSWORD
- * 2. LEGACY CONFIG FILE -- encrypted config.enc from a previous install
- * 3. SAVED OAUTH TOKENS -- Outlook tokens saved by `email auth outlook`
- * 4. NOTHING -- state = awaiting_setup
+ * 1. ACCOUNTS FILE -- EMAIL_ACCOUNTS_FILE, or <data dir>/accounts.toml when present
+ * 2. ENV VARS -- EMAIL_CREDENTIALS, or EMAIL_USER + EMAIL_APP_PASSWORD
+ * 3. LEGACY CONFIG FILE -- encrypted config.enc from a previous install
+ * 4. SAVED OAUTH TOKENS -- Outlook tokens saved by `email auth outlook`
+ * 5. NOTHING -- state = awaiting_setup
+ *
+ * The accounts file is validated here, so a malformed or explicitly missing
+ * file fails the boot with the file's path instead of surfacing later as an
+ * empty account list. Nothing is written to `process.env`, so the file stays the
+ * one source of truth.
  *
  * Returns new state. Takes <10ms (no network I/O).
  */
 export async function resolveCredentialState(): Promise<CredentialState> {
+  const accountsFile = await discoverAccountsFile()
+  if (accountsFile) {
+    await readAccountsFile(accountsFile.path)
+    console.error(`Email accounts loaded from ${accountsFile.path}`)
+    state = 'configured'
+    return state
+  }
+
   if (process.env.EMAIL_CREDENTIALS) {
     state = 'configured'
     return state

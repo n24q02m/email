@@ -321,16 +321,28 @@ describe('send - forward', () => {
 // ============================================================================
 
 describe('send - validation', () => {
-  it('throws when account is missing', async () => {
+  it('sends from the only account when no account is named (single mode)', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<only@gmail.com>' })
+
+    const result = await send(gmailAccounts, {
+      action: 'new',
+      to: 'x@test.com',
+      subject: 'T',
+      body: 'B'
+    })
+
+    expect(result.from).toBe('user1@gmail.com')
+  })
+
+  it('rejects an unnamed sender when several accounts are configured (multi mode)', async () => {
     await expect(
-      send(gmailAccounts, {
+      send([...gmailAccounts, ...outlookAccounts], {
         action: 'new',
-        account: '',
         to: 'x@test.com',
         subject: 'T',
         body: 'B'
       })
-    ).rejects.toThrow()
+    ).rejects.toThrow(/Account is required: 2 accounts are configured \(user1@gmail\.com, user1@outlook\.com\)/)
   })
 
   it('throws when to is missing', async () => {

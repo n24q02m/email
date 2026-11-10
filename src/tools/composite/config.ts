@@ -16,7 +16,8 @@
 
 import type { CredentialState } from '../../credential-state.js'
 import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
-import type { AccountConfig } from '../helpers/config.js'
+import type { AccountConfig, AccountMode } from '../helpers/config.js'
+import { accountMode, enabledAccounts, isAccountEnabled } from '../helpers/config.js'
 import { createUnknownActionError, withErrorHandling } from '../helpers/errors.js'
 import { clearSentFolderCache } from '../helpers/imap-client.js'
 import { _resetTokenCache } from '../helpers/oauth2.js'
@@ -31,7 +32,10 @@ export interface ConfigInput {
 interface ConfigStatusResult {
   action: 'status'
   state: CredentialState
+  /** `single` with one usable account, `multi` with two or more, `none` with none. */
+  mode: AccountMode
   accounts: string[]
+  disabled_accounts?: string[]
 }
 
 interface ConfigSetupStatusResult {
@@ -55,6 +59,7 @@ interface ConfigSetupCompleteResult {
   action: 'setup_complete'
   previous_state: CredentialState
   state: CredentialState
+  mode: AccountMode
   accounts: string[]
 }
 
@@ -116,10 +121,15 @@ export async function handleConfig(accounts: AccountConfig[], input: ConfigInput
 }
 
 function handleStatus(accounts: AccountConfig[]): ConfigStatusResult {
+  // Report the accounts a tool call may actually use; a row with
+  // `enabled = false` is listed separately so the file and the report agree.
+  const disabled = accounts.filter((account) => !isAccountEnabled(account))
   return {
     action: 'status',
     state: getState(),
-    accounts: accounts.map((a) => a.email)
+    mode: accountMode(accounts),
+    accounts: enabledAccounts(accounts).map((a) => a.email),
+    ...(disabled.length > 0 ? { disabled_accounts: disabled.map((a) => a.email) } : {})
   }
 }
 
@@ -135,7 +145,7 @@ function handleSetupStart(): ConfigSetupStartResult {
     action: 'setup_start',
     state: getState(),
     message:
-      'Set EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD) and restart the server, or run `email auth outlook <address>` from the CLI.'
+      'Set EMAIL_ACCOUNTS_FILE to an accounts.toml (multi-account), or EMAIL_CREDENTIALS / EMAIL_USER + EMAIL_APP_PASSWORD, and restart the server; or run `email auth outlook <address>` from the CLI.'
   }
 }
 
@@ -155,7 +165,8 @@ async function handleSetupComplete(accounts: AccountConfig[]): Promise<ConfigSet
     action: 'setup_complete',
     previous_state: previousState,
     state: newState,
-    accounts: newState === 'configured' ? accounts.map((a) => a.email) : []
+    mode: newState === 'configured' ? accountMode(accounts) : 'none',
+    accounts: newState === 'configured' ? enabledAccounts(accounts).map((a) => a.email) : []
   }
 }
 

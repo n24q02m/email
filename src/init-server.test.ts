@@ -10,6 +10,7 @@ const StdioServerTransportCtorMock = vi.fn(function (this: any) {})
 const registerToolsMock = vi.fn()
 const resolveCredentialStateMock = vi.fn().mockResolvedValue('configured')
 const loadConfigMock = vi.fn().mockResolvedValue([])
+const discoverAccountsFileMock = vi.fn().mockResolvedValue(null)
 
 vi.mock('./transports/http.js', () => ({
   startHttp: startHttpMock
@@ -35,6 +36,10 @@ vi.mock('./tools/helpers/config.js', () => ({
   loadConfig: loadConfigMock
 }))
 
+vi.mock('./tools/helpers/accounts-file.js', () => ({
+  discoverAccountsFile: discoverAccountsFileMock
+}))
+
 describe('initServer', () => {
   const originalEnv = process.env
   const originalArgv = process.argv
@@ -51,6 +56,9 @@ describe('initServer', () => {
     delete process.env.EMAIL_CREDENTIALS
     delete process.env.EMAIL_USER
     delete process.env.EMAIL_APP_PASSWORD
+    // No ambient accounts file: the file cases below drive the mock instead.
+    process.env.EMAIL_ACCOUNTS_FILE = 'off'
+    discoverAccountsFileMock.mockResolvedValue(null)
     // process.exit is mocked to throw so we can detect calls without
     // actually terminating the test runner.
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
@@ -125,5 +133,22 @@ describe('initServer', () => {
     await initServer()
     expect(connectMock).toHaveBeenCalled()
     expect(exitSpy).not.toHaveBeenCalled()
+  })
+
+  it('starts stdio when only an accounts file configures the server', async () => {
+    discoverAccountsFileMock.mockResolvedValue({ path: '/tmp/accounts.toml', explicit: true })
+    const { initServer } = await import('./init-server.js')
+    await initServer()
+    expect(exitSpy).not.toHaveBeenCalled()
+    expect(resolveCredentialStateMock).toHaveBeenCalled()
+    expect(connectMock).toHaveBeenCalled()
+  })
+
+  it('mentions EMAIL_ACCOUNTS_FILE in the missing-credentials message', async () => {
+    const { initServer } = await import('./init-server.js')
+    await expect(initServer()).rejects.toThrow('process.exit(1)')
+
+    const stderrOutput = stderrSpy.mock.calls.map((c: any) => String(c[0])).join('')
+    expect(stderrOutput).toContain('EMAIL_ACCOUNTS_FILE')
   })
 })

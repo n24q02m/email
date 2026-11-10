@@ -128,14 +128,23 @@ describe('attachments - download', () => {
 // ============================================================================
 
 describe('attachments - validation', () => {
-  it('throws when account is missing', async () => {
-    await expect(
-      attachments(accounts, {
-        action: 'list',
-        account: '',
-        uid: 10
-      })
-    ).rejects.toThrow()
+  it('uses the only configured account when none is named', async () => {
+    mockReadEmail.mockResolvedValue({
+      account_id: 'user1_gmail_com',
+      account_email: 'user1@gmail.com',
+      uid: 10,
+      subject: 'S',
+      from: 'a@test.com',
+      to: 'b@test.com',
+      date: '2026-01-01',
+      flags: [],
+      body_text: 'B',
+      attachments: []
+    })
+
+    const result = await attachments(accounts, { action: 'list', uid: 10 })
+
+    expect(result.account).toBe('user1@gmail.com')
   })
 
   it('throws when uid is missing', async () => {

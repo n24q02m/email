@@ -40,8 +40,11 @@ async function saveToSent(account: AccountConfig, result: SendResult): Promise<b
 export interface SendInput {
   action: 'new' | 'reply' | 'forward'
 
+  // Sender: optional while exactly one account is configured; required with
+  // several, where omitting it is an ACCOUNT_REQUIRED rejection naming them all.
+  account?: string
+
   // Required for all
-  account: string
   body: string
 
   // Required for new/forward; optional for reply (auto-derived from original sender)
@@ -67,14 +70,9 @@ export interface SendInput {
  */
 export async function send(accounts: AccountConfig[], input: SendInput): Promise<any> {
   return withErrorHandling(async () => {
-    if (!input.account) {
-      throw new EmailMCPError(
-        'account is required for send operations',
-        'VALIDATION_ERROR',
-        'Provide the sender account email address'
-      )
-    }
-
+    // The sender must be unambiguous, not always spelled out: a single-account
+    // setup sends from that account, and a multi-account setup is rejected with
+    // every account named (resolveSingleAccount) instead of guessing.
     if (!input.body) {
       throw new EmailMCPError('body is required', 'VALIDATION_ERROR', 'Provide the email body text')
     }

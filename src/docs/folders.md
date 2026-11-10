@@ -25,7 +25,7 @@ List all folders for all accounts or a specific account.
 
 ### status
 
-Read `MESSAGES`, `UNSEEN`, and `UIDNEXT` from IMAP STATUS for one exact mailbox. Both `account` and `folder` are required; the action never falls back to all accounts.
+Read `MESSAGES`, `UNSEEN`, and `UIDNEXT` from IMAP STATUS for one exact mailbox. `folder` is required and the action never falls back to all accounts. `account` may be omitted while exactly one account is enabled; with several it must name one, and the rejection lists the accounts to choose from.
 
 ```json
 {"action": "status", "account": "user@yahoo.com", "folder": "INBOX"}
@@ -46,7 +46,7 @@ Read `MESSAGES`, `UNSEEN`, and `UIDNEXT` from IMAP STATUS for one exact mailbox.
 ## Parameters
 
 - `action` - Action to perform (required): `list` or `status`
-- `account` - Account email or ID (optional for `list`; required for `status`)
+- `account` - Account email or ID (`status`: required only when more than one account is enabled)
 - `folder` - Exact mailbox path (required only for `status`)
 
 ## Common Folder Names

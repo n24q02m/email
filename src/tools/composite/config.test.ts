@@ -63,6 +63,7 @@ describe('config - status', () => {
     expect(result).toEqual({
       action: 'status',
       state: 'configured',
+      mode: 'multi',
       accounts: ['user1@gmail.com', 'user2@outlook.com']
     })
   })
@@ -75,6 +76,7 @@ describe('config - status', () => {
     expect(result).toEqual({
       action: 'status',
       state: 'awaiting_setup',
+      mode: 'none',
       accounts: []
     })
   })
@@ -104,7 +106,7 @@ describe('config - setup_start', () => {
       action: 'setup_start',
       state: 'awaiting_setup',
       message:
-        'Set EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD) and restart the server, or run `email auth outlook <address>` from the CLI.'
+        'Set EMAIL_ACCOUNTS_FILE to an accounts.toml (multi-account), or EMAIL_CREDENTIALS / EMAIL_USER + EMAIL_APP_PASSWORD, and restart the server; or run `email auth outlook <address>` from the CLI.'
     })
     expect(result).not.toHaveProperty('setup_url')
   })
@@ -138,6 +140,7 @@ describe('config - setup_complete', () => {
       action: 'setup_complete',
       previous_state: 'awaiting_setup',
       state: 'configured',
+      mode: 'multi',
       accounts: ['user1@gmail.com', 'user2@outlook.com']
     })
   })
@@ -152,6 +155,7 @@ describe('config - setup_complete', () => {
       action: 'setup_complete',
       previous_state: 'awaiting_setup',
       state: 'awaiting_setup',
+      mode: 'none',
       accounts: []
     })
   })
