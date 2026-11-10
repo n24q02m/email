@@ -23,7 +23,13 @@ import { type FoldersInput, folders } from './composite/folders.js'
 import { type MessagesInput, messages } from './composite/messages.js'
 // Import mega tools
 import { type AccountConfig, loadConfig } from './helpers/config.js'
-import { aiReadableMessage, EmailMCPError, enhanceError, findClosestMatch } from './helpers/errors.js'
+import {
+  aiReadableMessage,
+  EmailMCPError,
+  enhanceError,
+  findClosestMatch,
+  NOT_CONFIGURED_MESSAGE
+} from './helpers/errors.js'
 import { isValidToolName, markStructuredContent, wrapToolResult } from './helpers/security.js'
 
 // Get docs directory path - works for both bundled CLI and unbundled code
@@ -50,7 +56,7 @@ const RESOURCES = [
  * 5 Tools covering full email operations
  * Compressed descriptions for token optimization
  */
-const TOOLS = [
+export const TOOLS = [
   {
     name: 'messages',
     description:
@@ -270,14 +276,42 @@ async function handleHelp(args: unknown): Promise<{ tool: string; documentation:
   }
 }
 
-type ToolHandler = (accounts: AccountConfig[], args: unknown) => Promise<unknown>
+export type ToolHandler = (accounts: AccountConfig[], args: unknown) => Promise<unknown>
 
+/**
+ * The single dispatch table shared by both callers: the MCP server below and
+ * the `email <tool> <action>` CLI subcommands (`src/tool-cli.ts`). Keeping one
+ * table is what makes the CLI an adapter rather than a second implementation.
+ */
 const TOOL_HANDLERS: Record<string, ToolHandler> = {
   messages: (accounts, args) => messages(accounts, args as unknown as MessagesInput),
   folders: (accounts, args) => folders(accounts, args as unknown as FoldersInput),
   attachments: (accounts, args) => attachments(accounts, args as unknown as AttachmentsInput),
   config: (accounts, args) => handleConfig(accounts, args as unknown as ConfigInput),
   help: (_, args) => handleHelp(args)
+}
+
+/**
+ * Resolve the handler for `name`, throwing the same UNKNOWN_TOOL error (with a
+ * closest-match suggestion) for both the MCP request path and the CLI.
+ */
+export function resolveToolHandler(name: string): ToolHandler {
+  const handler = TOOL_HANDLERS[name]
+  if (!handler) {
+    const closest = findClosestMatch(name, VALID_TOOL_NAMES)
+    const suggestion = closest ? ` Did you mean '${closest}'?` : ''
+    throw new EmailMCPError(
+      `Unknown tool: ${name}.${suggestion}`,
+      'UNKNOWN_TOOL',
+      `Available tools: ${AVAILABLE_TOOLS_STRING}`
+    )
+  }
+  return handler
+}
+
+/** Run one tool through the shared dispatch table (used by the tool CLI). */
+export async function invokeTool(name: string, accounts: AccountConfig[], args: unknown): Promise<unknown> {
+  return resolveToolHandler(name)(accounts, args)
 }
 
 // Pre-compute derived values to avoid redundant allocations on every request
@@ -336,16 +370,7 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[]) 
     }
 
     try {
-      const handler = TOOL_HANDLERS[name]
-      if (!handler) {
-        const closest = findClosestMatch(name, VALID_TOOL_NAMES)
-        const suggestion = closest ? ` Did you mean '${closest}'?` : ''
-        throw new EmailMCPError(
-          `Unknown tool: ${name}.${suggestion}`,
-          'UNKNOWN_TOOL',
-          `Available tools: ${AVAILABLE_TOOLS_STRING}`
-        )
-      }
+      const handler = resolveToolHandler(name)
 
       // Credential guard: when not configured, return setup instructions.
       // Help and config manage the credential lifecycle themselves (docs need no credentials).
@@ -360,7 +385,7 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[]) 
             content: [
               {
                 type: 'text',
-                text: 'Email credentials are not configured.\n\nSet EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD), or run `email auth outlook <address>` for Outlook.'
+                text: NOT_CONFIGURED_MESSAGE
               }
             ],
             isError: true

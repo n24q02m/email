@@ -92,7 +92,7 @@ export async function resolveCredentialState(): Promise<CredentialState> {
     // Token read failed or store error, continue
   }
 
-  console.error('No credentials found -- server starting in awaiting_setup mode')
+  console.error('No email credentials found -- awaiting setup')
   state = 'awaiting_setup'
   return state
 }

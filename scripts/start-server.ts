@@ -1,14 +1,18 @@
 /**
  * email MCP Server Starter
  *
- * Wired via hull's buildCli: `auth`/`logout` subcommands route to the
- * OAuth2 device-code CLI (extra handlers); bare/flag argv starts the MCP
- * server (hull built-ins such as config, doctor, --version, -h remain available).
+ * Wired via hull's buildCli: every MCP tool is also a console subcommand
+ * (`email messages search --query UNREAD --json`, `email folders list`, ...)
+ * through `toolCliHandlers()`, which routes to the same dispatch table the
+ * server registers. `auth`/`logout` route to the OAuth2 device-code CLI, and
+ * bare/flag argv starts the MCP server (hull built-ins such as config, doctor,
+ * --version, -h remain available).
  */
 
 import { buildCli } from '@n24q02m/hull'
 import { runAuth, runLogout } from '../src/auth-cli.js'
 import { getVersion, initServer } from '../src/init-server.js'
+import { printCliHelp, toolCliHandlers } from '../src/tool-cli.js'
 
 const SERVER_NAME = 'email'
 // Credential storage slug for `config status|delete` and `doctor` (PerPluginStore,
@@ -52,6 +56,16 @@ async function serve(): Promise<number | undefined> {
   return undefined
 }
 
+const argv = process.argv.slice(2)
+
+// `--help` is answered here, before buildCli sees the argv: buildCli prints one
+// flat list of every handler, which cannot show tool commands apart from
+// operator commands. Everything else still goes through buildCli.
+if (argv[0] === '-h' || argv[0] === '--help') {
+  printCliHelp(SERVER_NAME)
+  process.exit(0)
+}
+
 buildCli(SERVER_NAME, {
   serve,
   version: getVersion(),
@@ -68,6 +82,7 @@ buildCli(SERVER_NAME, {
     relay: async () => {
       console.error('relay was removed; run `email auth` (see README)')
       return 2
-    }
+    },
+    ...toolCliHandlers()
   }
-})(process.argv.slice(2)).then((code) => process.exit(code))
+})(argv).then((code) => process.exit(code))
