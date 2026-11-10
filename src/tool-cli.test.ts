@@ -15,15 +15,26 @@ vi.mock('./tools/composite/folders.js', () => ({ folders: vi.fn() }))
 vi.mock('./tools/composite/messages.js', () => ({ messages: vi.fn(), clearArchiveFolderCache: vi.fn() }))
 vi.mock('./tools/helpers/config.js', () => ({ loadConfig: vi.fn() }))
 
-import { printCliHelp, runToolCommand, TOOL_COMMANDS, toolCliHandlers } from './tool-cli.js'
+import {
+  commandForTool,
+  printCliHelp,
+  runToolCommand,
+  TOOL_COMMANDS,
+  toolCliHandlers,
+  unmappedTools
+} from './tool-cli.js'
 import { attachments } from './tools/composite/attachments.js'
 import { handleConfig } from './tools/composite/config.js'
 import { folders } from './tools/composite/folders.js'
 import { messages } from './tools/composite/messages.js'
 import { loadConfig } from './tools/helpers/config.js'
 import { EmailMCPError } from './tools/helpers/errors.js'
+import { TOOLS } from './tools/registry.js'
 
 const ACCOUNTS = [{ email: 'stub@example.com' }]
+
+/** The registry's tool names — the parity source of truth, never a hand list. */
+const REGISTERED_TOOLS = TOOLS.map((tool) => tool.name)
 
 let out: string
 let err: string
@@ -158,6 +169,43 @@ describe('tool commands reach the shared handlers', () => {
     expect(Object.keys(handlers).sort()).toEqual(Object.keys(TOOL_COMMANDS).sort())
     expect(await handlers.messages?.(['search', '--json'])).toBe(0)
     expect(messages).toHaveBeenCalled()
+  })
+})
+
+describe('CLI parity with the tool registry', () => {
+  it('gives every registered tool a CLI command', () => {
+    expect(unmappedTools(REGISTERED_TOOLS)).toEqual([])
+  })
+
+  it('maps commands only to tools the registry exports', () => {
+    const unknown = Object.values(TOOL_COMMANDS).filter((name) => !REGISTERED_TOOLS.includes(name))
+
+    expect(unknown).toEqual([])
+  })
+
+  it('resolves the config tool to its published command name, not the operator name', () => {
+    expect(commandForTool('config')).toBe('config-tool')
+  })
+
+  it('prints the published command name in the config tool usage line', async () => {
+    const code = await runToolCommand('config', ['--help'])
+
+    expect(code).toBe(0)
+    expect(out).toContain('usage: email config-tool <action> [options]')
+  })
+
+  it('fails an unmapped tool by name instead of calling it by its raw name', async () => {
+    // A copy of the registry names, so the real TOOLS list stays untouched.
+    const synthetic = [...REGISTERED_TOOLS, 'archive']
+
+    expect(unmappedTools(synthetic)).toEqual(['archive'])
+    expect(commandForTool('archive')).toBeUndefined()
+
+    const code = await runToolCommand('archive', ['list', '--json'])
+
+    expect(code).toBe(1)
+    expect(out).toBe('')
+    expect(err).toContain('Tool archive has no CLI command')
   })
 })
 
