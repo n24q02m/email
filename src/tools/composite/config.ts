@@ -18,8 +18,9 @@ import type { CredentialState } from '../../credential-state.js'
 import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
 import type { AccountConfig, AccountMode } from '../helpers/config.js'
 import { accountMode, enabledAccounts, isAccountEnabled } from '../helpers/config.js'
+import { refuseInDraftOnly } from '../helpers/draft-only.js'
 import { createUnknownActionError, withErrorHandling } from '../helpers/errors.js'
-import { clearSentFolderCache } from '../helpers/imap-client.js'
+import { clearDraftsFolderCache, clearSentFolderCache } from '../helpers/imap-client.js'
 import { _resetTokenCache } from '../helpers/oauth2.js'
 import { clearArchiveFolderCache } from './messages.js'
 
@@ -89,6 +90,7 @@ type ConfigResult =
  */
 export async function handleConfig(accounts: AccountConfig[], input: ConfigInput): Promise<ConfigResult> {
   return withErrorHandling(async () => {
+    refuseInDraftOnly('config', input.action)
     switch (input.action) {
       case 'status':
         return handleStatus(accounts)
@@ -182,7 +184,7 @@ function handleCacheClear(): ConfigCacheClearResult {
   const sentCount = clearSentFolderCache()
   const archiveCount = clearArchiveFolderCache()
   _resetTokenCache()
-  const cleared = sentCount + archiveCount
+  const cleared = sentCount + archiveCount + clearDraftsFolderCache()
   return {
     action: 'cache_clear',
     ok: true,

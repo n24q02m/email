@@ -494,3 +494,16 @@ describe('OAuth2 SMTP authentication', () => {
     )
   })
 })
+
+describe('composing without delivery', () => {
+  it('builds the message but never opens an SMTP transport', async () => {
+    mockBuild.mockResolvedValueOnce(Buffer.from('Message-ID: <composed@test>\r\nSubject: Hello\r\n\r\nWorld'))
+
+    const result = await sendNewEmail(account, { to: 'recipient@test.com', subject: 'Hello', body: 'World' }, false)
+
+    expect(result.success).toBe(true)
+    expect(result.message_id).toBe('<composed@test>')
+    expect(result.raw).toBeInstanceOf(Buffer)
+    expect(mockSendMail).not.toHaveBeenCalled()
+  })
+})

@@ -498,6 +498,48 @@ export async function resolveSentFolder(account: AccountConfig): Promise<string>
   }
 }
 
+// ============================================================================
+// Drafts Folder
+// ============================================================================
+
+const draftsFolderCache = new Map<string, Promise<string>>()
+
+/** Clear the drafts folder path cache */
+export function clearDraftsFolderCache(): number {
+  const count = draftsFolderCache.size
+  draftsFolderCache.clear()
+  return count
+}
+
+/**
+ * Resolve the Drafts folder path for the given account: the folder flagged \Drafts,
+ * else the provider default. Results are cached per account.
+ */
+export async function resolveDraftsFolder(account: AccountConfig): Promise<string> {
+  const cached = draftsFolderCache.get(account.id)
+  if (cached) return cached
+
+  const resolvePromise = (async () => {
+    let draftsFolder = account.imap.host.includes('gmail') ? '[Gmail]/Drafts' : 'Drafts'
+    try {
+      const folders = await listFolders(account)
+      const found = folders.find((f) => f.flags.some((flag) => flag === '\\Drafts') || f.path === draftsFolder)
+      if (found) draftsFolder = found.path
+    } catch {
+      // Use default if folder listing fails
+    }
+    return draftsFolder
+  })()
+
+  draftsFolderCache.set(account.id, resolvePromise)
+  try {
+    return await resolvePromise
+  } catch (err) {
+    draftsFolderCache.delete(account.id)
+    throw err
+  }
+}
+
 /**
  * Append a raw RFC2822 message to an IMAP folder.
  * Used to save sent emails to the Sent folder.
