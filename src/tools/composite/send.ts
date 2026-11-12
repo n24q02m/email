@@ -4,10 +4,10 @@
  */
 
 import type { AccountConfig } from '../helpers/config.js'
-import { resolveSingleAccount } from '../helpers/config.js'
 import { isDraftOnly } from '../helpers/draft-only.js'
 import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
 import { appendToFolder, readEmail, resolveDraftsFolder, resolveSentFolder } from '../helpers/imap-client.js'
+import { replySender, resolveSender } from '../helpers/sender.js'
 import type { EmailAttachment, SendResult } from '../helpers/smtp-client.js'
 import { forwardEmail, replyToEmail, sendNewEmail } from '../helpers/smtp-client.js'
 
@@ -65,6 +65,11 @@ export interface SendInput {
   // several, where omitting it is an ACCOUNT_REQUIRED rejection naming them all.
   account?: string
 
+  // From address: the account's own address or one of its aliases, optionally
+  // as "Name <address>". Alone it also picks the account that owns the address.
+  // Defaults to the account address; a reply defaults to the alias it was sent to.
+  from?: string
+
   // Required for all
   body: string
 
@@ -96,7 +101,7 @@ export async function send(accounts: AccountConfig[], input: SendInput): Promise
   return withErrorHandling(async () => {
     // The sender must be unambiguous, not always spelled out: a single-account
     // setup sends from that account, and a multi-account setup is rejected with
-    // every account named (resolveSingleAccount) instead of guessing.
+    // every account named (resolveSender) instead of guessing.
     if (!input.body) {
       throw new EmailMCPError('body is required', 'VALIDATION_ERROR', 'Provide the email body text')
     }
@@ -129,11 +134,12 @@ async function handleNew(accounts: AccountConfig[], input: SendInput): Promise<a
     throw new EmailMCPError('subject is required for new email', 'VALIDATION_ERROR', 'Provide the email subject')
   }
 
-  const account = resolveSingleAccount(accounts, input.account)
+  const { account, sender } = resolveSender(accounts, input.account, input.from)
 
   const result = await sendNewEmail(
     account,
     {
+      from: sender.header,
       to: input.to,
       subject: input.subject,
       body: input.body,
@@ -146,7 +152,7 @@ async function handleNew(accounts: AccountConfig[], input: SendInput): Promise<a
 
   return {
     action: 'new',
-    from: account.email,
+    from: sender.address,
     to: input.to,
     subject: input.subject,
     success: result.success,
@@ -168,11 +174,15 @@ async function handleReply(accounts: AccountConfig[], input: SendInput): Promise
     )
   }
 
-  const account = resolveSingleAccount(accounts, input.account)
+  const resolved = resolveSender(accounts, input.account, input.from)
+  const account = resolved.account
   const folder = input.folder || 'INBOX'
 
   // Read original email to get threading headers + auto-derive `to`
   const original = await readEmail(account, input.uid, folder)
+
+  // Without an explicit `from`, answer from the alias the original was sent to
+  const sender = input.from?.trim() ? resolved.sender : replySender(account, original)
 
   // Auto-derive `to` from original sender if not provided
   const replyTo = input.to || original.from
@@ -188,6 +198,7 @@ async function handleReply(accounts: AccountConfig[], input: SendInput): Promise
   const result = await replyToEmail(
     account,
     {
+      from: sender.header,
       to: replyTo,
       subject: input.subject || original.subject,
       body: input.body,
@@ -202,7 +213,7 @@ async function handleReply(accounts: AccountConfig[], input: SendInput): Promise
 
   return {
     action: 'reply',
-    from: account.email,
+    from: sender.address,
     to: replyTo,
     subject: input.subject || `Re: ${original.subject}`,
     in_reply_to: original.message_id,
@@ -232,7 +243,7 @@ async function handleForward(accounts: AccountConfig[], input: SendInput): Promi
     )
   }
 
-  const account = resolveSingleAccount(accounts, input.account)
+  const { account, sender } = resolveSender(accounts, input.account, input.from)
   const folder = input.folder || 'INBOX'
 
   // Read original email to include in forward
@@ -241,6 +252,7 @@ async function handleForward(accounts: AccountConfig[], input: SendInput): Promi
   const result = await forwardEmail(
     account,
     {
+      from: sender.header,
       to: input.to,
       subject: input.subject || original.subject,
       body: input.body,
@@ -254,7 +266,7 @@ async function handleForward(accounts: AccountConfig[], input: SendInput): Promi
 
   return {
     action: 'forward',
-    from: account.email,
+    from: sender.address,
     to: input.to,
     subject: input.subject || `Fwd: ${original.subject}`,
     success: result.success,

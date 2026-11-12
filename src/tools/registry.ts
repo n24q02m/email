@@ -61,7 +61,7 @@ export const TOOLS = [
   {
     name: 'messages',
     description:
-      'Search, read, manage, compose, and send email messages.\n\nActions (required params -> optional):\n- search (-> account, query="UNSEEN", folder="INBOX", limit=20)\n- read (account, uid -> folder, preview, max_chars, full)\n- mark_read / mark_unread / flag / unflag (account, uid|uids -> folder)\n- move (account, uid|uids, destination -> folder)\n- archive / trash (account, uid|uids -> folder)\n- new (account, to, subject, body -> cc, bcc, attachments, draft)\n- reply (account, uid, body -> to, folder, attachments, draft)\n- forward (account, uid, to, body -> folder, attachments, draft)\n\nRead defaults to a bounded preview: at most max_chars (default 4000) with an explicit [Truncated: showing N of M characters] marker, body_truncated, body_char_count and body_truncation_hint. Pass full:true (or preview:false) to read the complete body; preview:<number> or max_chars tune the bound (1-100000).\n\nQuery examples: "UNREAD", "FROM user@example.com", "SINCE 2026-01-01", "UNREAD FROM boss@company.com". Date format MUST be YYYY-MM-DD.\n\nOutbound bodies support plain text or HTML. Attachments use base64 content, max 10 files and 25MB decoded total.',
+      'Search, read, manage, compose, and send email messages.\n\nActions (required params -> optional):\n- search (-> account, query="UNSEEN", folder="INBOX", limit=20)\n- read (account, uid -> folder, preview, max_chars, full)\n- mark_read / mark_unread / flag / unflag (account, uid|uids -> folder)\n- move (account, uid|uids, destination -> folder)\n- archive / trash (account, uid|uids -> folder)\n- new (account, to, subject, body -> from, cc, bcc, attachments, draft)\n- reply (account, uid, body -> from, to, folder, attachments, draft)\n- forward (account, uid, to, body -> from, folder, attachments, draft)\n\nRead defaults to a bounded preview: at most max_chars (default 4000) with an explicit [Truncated: showing N of M characters] marker, body_truncated, body_char_count and body_truncation_hint. Pass full:true (or preview:false) to read the complete body; preview:<number> or max_chars tune the bound (1-100000).\n\nQuery examples: "UNREAD", "FROM user@example.com", "SINCE 2026-01-01", "UNREAD FROM boss@company.com". Date format MUST be YYYY-MM-DD.\n\nOutbound bodies support plain text or HTML. Attachments use base64 content, max 10 files and 25MB decoded total.',
     annotations: {
       title: 'Messages',
       readOnlyHint: false,
@@ -91,6 +91,11 @@ export const TOOLS = [
           description: 'Action to perform'
         },
         account: { type: 'string', description: 'Account email filter (optional, defaults to all for search)' },
+        from: {
+          type: 'string',
+          description:
+            'new/reply/forward: send as this address, the account email or one of its aliases (accounts.toml), optionally "Name <address>". Alone it picks the account that owns the address. Default: the account email; a reply defaults to the alias the original was sent to'
+        },
         query: {
           type: 'string',
           description:

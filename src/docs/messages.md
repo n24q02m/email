@@ -104,6 +104,10 @@ Send a new email via SMTP.
 ```json
 {"action": "new", "account": "user@gmail.com", "to": "a@example.com", "subject": "Proposal", "body": "Draft for review.", "draft": true}
 ```
+Send as an alias of the account (see [Sender aliases](#sender-aliases)); the alias alone picks the account:
+```json
+{"action": "new", "from": "Support <support@example.com>", "to": "a@example.com", "subject": "Hello", "body": "Hi there!"}
+```
 
 ### reply
 Reply to an email. Reads the original email to set threading headers and auto-derives the recipient when `to` is omitted.
@@ -138,6 +142,7 @@ Forward an email. The original body is appended with a separator.
 - `bcc` - BCC recipients (comma-separated, optional)
 - `attachments` - Base64 file attachments, max 10 files and 25MB decoded total
 - `draft` - Save new/reply/forward to the Drafts folder instead of sending (optional)
+- `from` - Sender for new/reply/forward: the account email or one of its `aliases`, optionally `Name <address>` (optional). Without `account`, the account that owns the address sends it. A reply without `from` answers from the alias the original was addressed to
 
 ## Outbound response and provider behavior
 
@@ -151,6 +156,19 @@ Forward an email. The original body is appended with a separator.
 ### Drafts
 
 With `draft: true`, `new`, `reply` and `forward` compose the message exactly as they would send it (threading headers, quoted original, attachments) but append it to the account's Drafts folder (flags `\Draft`, `\Seen`) instead. The result carries `sent: false`, `saved_to_drafts: true` and `drafts_folder`. If the draft cannot be saved the call fails; nothing is sent.
+
+### Sender aliases
+
+One mailbox often receives mail for several addresses (iCloud+ custom domains, Gmail "Send mail as", Fastmail aliases). List them under the account in `accounts.toml`:
+
+```toml
+[accounts.icloud]
+email = "me@icloud.com"
+password = "app-specific-password"
+aliases = ["hello@example.com", "support@example.com"]
+```
+
+The login stays `email`; an alias only changes the From header and the SMTP envelope sender, so the provider must allow sending as that address. Search and read already cover mail sent to every alias, since it lands in the same mailbox (`TO hello@example.com` narrows a search to one address). Any other `from` is rejected with `SENDER_NOT_ALLOWED`, and an alias can belong to only one account.
 
 ### Draft-only mode
 

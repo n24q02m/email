@@ -12,6 +12,7 @@
  *     smtp_host = "smtp.company.com"   # optional
  *     smtp_port = 587                  # optional
  *     smtp_security = "starttls"       # optional: tls | ssl | starttls | none
+ *     aliases = ["team@company.com"]   # optional: other addresses this mailbox may send as
  *     enabled = true                   # optional; false keeps the row but skips it
  *
  * The file is additive, not a replacement: `EMAIL_CREDENTIALS` keeps working
@@ -57,6 +58,7 @@ const ACCOUNT_KEYS = [
   'smtp_host',
   'smtp_port',
   'smtp_security',
+  'aliases',
   'enabled'
 ] as const
 
@@ -82,6 +84,11 @@ export interface AccountsFileEntry {
   smtpHost?: string
   smtpPort?: number
   smtpSecurity?: SmtpSecurity
+  /**
+   * Other addresses this mailbox may send as (custom-domain addresses, provider
+   * aliases). The login stays `email`; an alias only changes the From header.
+   */
+  aliases?: string[]
 }
 
 /** Where the accounts file is, and whether the operator named it. */
@@ -207,6 +214,24 @@ export function parseAccountsFile(text: string, path: string): AccountsFileEntry
     entries.push(entry)
   }
 
+  // A sender address must name exactly one mailbox, or `from` could not pick
+  // the account to send through. Checked after every row is known, so an alias
+  // that repeats a later row's email is caught too.
+  const seenSenders = new Map(seenEmails)
+  for (const entry of entries) {
+    for (const alias of entry.aliases ?? []) {
+      const lowerAlias = alias.toLowerCase()
+      const owner = seenSenders.get(lowerAlias)
+      if (owner !== undefined && owner !== entry.id) {
+        throw invalid(
+          `${who}: alias ${alias} in accounts.${entry.id} is already used by accounts.${owner}`,
+          'Each sender address belongs to one account'
+        )
+      }
+      seenSenders.set(lowerAlias, entry.id)
+    }
+  }
+
   return entries
 }
 
@@ -236,6 +261,31 @@ function optionalPort(table: Record<string, unknown>, field: string, who: string
   return value
 }
 
+const ADDRESS_PATTERN = /^[^\s@<>,]+@[^\s@<>,]+$/
+
+function optionalAliases(table: Record<string, unknown>, email: string, who: string): string[] | undefined {
+  if (!Object.hasOwn(table, 'aliases')) return undefined
+  const value = table.aliases
+  if (!Array.isArray(value)) {
+    throw invalid(`${who}: aliases must be a list of addresses`, 'Write aliases = ["team@example.com"]')
+  }
+  const lowerEmail = email.toLowerCase()
+  const seen = new Set<string>()
+  const aliases: string[] = []
+  for (const item of value) {
+    if (typeof item !== 'string' || !ADDRESS_PATTERN.test(item.trim())) {
+      throw invalid(`${who}: aliases entry ${JSON.stringify(item)} is not an address`)
+    }
+    const alias = item.trim()
+    const lower = alias.toLowerCase()
+    // The account's own address and repeats add nothing; drop them quietly.
+    if (lower === lowerEmail || seen.has(lower)) continue
+    seen.add(lower)
+    aliases.push(alias)
+  }
+  return aliases
+}
+
 function parseAccountEntry(key: string, value: unknown, fileWho: string): AccountsFileEntry {
   const id = key.trim()
   if (!id) {
@@ -259,6 +309,7 @@ function parseAccountEntry(key: string, value: unknown, fileWho: string): Accoun
   if (!/^[^\s@]+@[^\s@]+$/.test(email)) {
     throw invalid(`${who}: email "${email}" is not an address`)
   }
+  const aliases = optionalAliases(value, email, who)
 
   if (!Object.hasOwn(value, 'password')) {
     throw invalid(
@@ -311,7 +362,8 @@ function parseAccountEntry(key: string, value: unknown, fileWho: string): Accoun
     ...(imapPort === undefined ? {} : { imapPort }),
     ...(smtpHost === undefined ? {} : { smtpHost }),
     ...(smtpPort === undefined ? {} : { smtpPort }),
-    ...(smtpSecurity === undefined ? {} : { smtpSecurity })
+    ...(smtpSecurity === undefined ? {} : { smtpSecurity }),
+    ...(aliases === undefined || aliases.length === 0 ? {} : { aliases })
   }
 }
 

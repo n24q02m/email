@@ -8,7 +8,7 @@ This tool reports the status of your email credentials, explains how to set them
 ### Actions
 
 #### 1. status
-Check current credential state and the configured accounts.
+Check current credential state and the configured accounts. `aliases` maps each account that has sender aliases (accounts.toml `aliases`) to the extra addresses it can send as.
 ```json
 {
   "action": "status"

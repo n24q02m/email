@@ -863,3 +863,127 @@ describe('send - draft-only mode', () => {
     ).rejects.toThrow('could not save the draft')
   })
 })
+
+// ============================================================================
+// from: sender aliases
+// ============================================================================
+
+describe('send - from (sender aliases)', () => {
+  const aliasAccounts: AccountConfig[] = [
+    { ...icloudAccounts[0]!, aliases: ['hello@example.com', 'support@example.com'] },
+    gmailAccounts[0]!
+  ]
+
+  function original(overrides: Record<string, unknown> = {}) {
+    return {
+      account_id: 'user1_icloud_com',
+      account_email: 'user1@icloud.com',
+      uid: 5,
+      message_id: '<orig5@test>',
+      subject: 'Question',
+      from: 'customer@test.com',
+      to: 'Support <support@example.com>',
+      date: '2025-06-01',
+      flags: [],
+      body_text: 'original body',
+      attachments: [],
+      ...overrides
+    }
+  }
+
+  it('new: the alias alone picks the account and sets From', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<id>' })
+
+    const result = await send(aliasAccounts, {
+      action: 'new',
+      from: 'Hello Team <hello@example.com>',
+      to: 'r@test.com',
+      subject: 'Hi',
+      body: 'B'
+    })
+
+    expect(result.from).toBe('hello@example.com')
+    expect(mockSendNewEmail).toHaveBeenCalledWith(
+      aliasAccounts[0],
+      expect.objectContaining({ from: '"Hello Team" <hello@example.com>' }),
+      true
+    )
+  })
+
+  it('new: without from sends as the account address', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<id>' })
+
+    const result = await send(aliasAccounts, {
+      action: 'new',
+      account: 'user1@icloud.com',
+      to: 'r@test.com',
+      subject: 'Hi',
+      body: 'B'
+    })
+
+    expect(result.from).toBe('user1@icloud.com')
+    expect(mockSendNewEmail).toHaveBeenCalledWith(
+      aliasAccounts[0],
+      expect.objectContaining({ from: 'user1@icloud.com' }),
+      true
+    )
+  })
+
+  it('new: rejects an address the account does not own, before sending', async () => {
+    await expect(
+      send(aliasAccounts, {
+        action: 'new',
+        account: 'user1@gmail.com',
+        from: 'hello@example.com',
+        to: 'r@test.com',
+        subject: 'Hi',
+        body: 'B'
+      })
+    ).rejects.toMatchObject({ code: 'SENDER_NOT_ALLOWED' })
+    expect(mockSendNewEmail).not.toHaveBeenCalled()
+  })
+
+  it('reply: defaults to the alias the original was sent to', async () => {
+    mockReadEmail.mockResolvedValue(original())
+    mockReplyToEmail.mockResolvedValue({ success: true, message_id: '<r>' })
+
+    const result = await send(aliasAccounts, { action: 'reply', account: 'user1@icloud.com', uid: 5, body: 'Answer' })
+
+    expect(result.from).toBe('support@example.com')
+    expect(mockReplyToEmail).toHaveBeenCalledWith(
+      aliasAccounts[0],
+      expect.objectContaining({ from: 'support@example.com', to: 'customer@test.com' }),
+      true
+    )
+  })
+
+  it('reply: an explicit from wins over the derived alias', async () => {
+    mockReadEmail.mockResolvedValue(original())
+    mockReplyToEmail.mockResolvedValue({ success: true, message_id: '<r>' })
+
+    const result = await send(aliasAccounts, { action: 'reply', from: 'hello@example.com', uid: 5, body: 'Answer' })
+
+    expect(result.from).toBe('hello@example.com')
+    expect(mockReadEmail).toHaveBeenCalledWith(aliasAccounts[0], 5, 'INBOX')
+  })
+
+  it('forward: sends as the given alias', async () => {
+    mockReadEmail.mockResolvedValue(original())
+    mockForwardEmail.mockResolvedValue({ success: true, message_id: '<f>' })
+
+    const result = await send(aliasAccounts, {
+      action: 'forward',
+      from: 'support@example.com',
+      to: 'colleague@test.com',
+      uid: 5,
+      body: 'FYI'
+    })
+
+    expect(result.from).toBe('support@example.com')
+    expect(mockForwardEmail).toHaveBeenCalledWith(
+      aliasAccounts[0],
+      expect.objectContaining({ from: 'support@example.com' }),
+      true
+    )
+  })
+})
