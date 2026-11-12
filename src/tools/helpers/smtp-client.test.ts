@@ -31,7 +31,7 @@ vi.mock('./oauth2.js', () => ({
 
 import { createTransport } from 'nodemailer'
 import { ensureValidToken } from './oauth2.js'
-import { forwardEmail, replyToEmail, sendNewEmail } from './smtp-client.js'
+import { forwardEmail, forwardSubject, replySubject, replyToEmail, sendNewEmail } from './smtp-client.js'
 
 const account: AccountConfig = {
   id: 'test_gmail_com',
@@ -505,5 +505,32 @@ describe('composing without delivery', () => {
     expect(result.message_id).toBe('<composed@test>')
     expect(result.raw).toBeInstanceOf(Buffer)
     expect(mockSendMail).not.toHaveBeenCalled()
+  })
+})
+
+describe('message_id of a sent message', () => {
+  it('reports the Message-ID header that was sent, not the transport id', async () => {
+    mockBuild.mockResolvedValueOnce(Buffer.from('Message-ID: <header@example.com>\r\nSubject: Hi\r\n\r\nBody'))
+    mockSendMail.mockResolvedValueOnce({ messageId: '<transport-made-up@example.com>' })
+
+    const result = await sendNewEmail(account, { to: 'r@test.com', subject: 'Hi', body: 'Body' })
+
+    expect(result.message_id).toBe('<header@example.com>')
+    expect(mockSendMail).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to the transport id when the raw message has none', async () => {
+    const result = await sendNewEmail(account, { to: 'r@test.com', subject: 'Hi', body: 'Body' })
+
+    expect(result.message_id).toBe('<sent123@gmail.com>')
+  })
+})
+
+describe('replySubject / forwardSubject', () => {
+  it('adds the prefix once', () => {
+    expect(replySubject('Hello')).toBe('Re: Hello')
+    expect(replySubject('Re: Hello')).toBe('Re: Hello')
+    expect(forwardSubject('Hello')).toBe('Fwd: Hello')
+    expect(forwardSubject('Fwd: Hello')).toBe('Fwd: Hello')
   })
 })
