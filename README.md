@@ -1,6 +1,6 @@
 # email
 
-mcp-name: io.github.n24q02m/better-email-mcp
+mcp-name: io.github.n24q02m/email
 
 **IMAP/SMTP email for AI agents -- read, send, organize, and manage attachments across accounts.**
 
@@ -99,9 +99,11 @@ The server runs in two modes: **stdio** (default, single-user, credentials from 
 ```
 
 The package is `@n24q02m/email` (formerly `@n24q02m/better-email-mcp`; old package
-receives one final release then freezes). The MCP Registry id stays
-`io.github.n24q02m/better-email-mcp`, and the legacy `better-email-mcp` command is
-kept as an alias of `email`.
+receives one final release then freezes). The MCP Registry id is
+`io.github.n24q02m/email`; the entry published earlier as
+`io.github.n24q02m/better-email-mcp` stays frozen under that old name, because
+registry versions are immutable. The legacy `better-email-mcp` command is kept as
+an alias of `email`.
 
 Multiple accounts are comma-separated: `user1@gmail.com:pass1,user2@outlook.com:pass2`, or listed in an [accounts file](#accounts-file-single-and-multi-account). See [Configuration](#configuration) for all env vars, and [Remote (HTTP Mode)](#remote-http-mode) to run a hosted server.
 
