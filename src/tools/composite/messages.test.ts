@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from '../helpers/config.js'
 
 // --- Mocks ---
@@ -669,5 +669,37 @@ describe('messages - trash (extended)', () => {
 
     expect(result.action).toBe('trash')
     expect(mockTrashEmails).toHaveBeenCalledWith(accounts[0], [10, 20, 30], 'INBOX')
+  })
+})
+
+// ============================================================================
+// draft-only mode
+// ============================================================================
+
+describe('messages - draft-only mode', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_MCP_DRAFT_ONLY', '1')
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it.each(['trash', 'archive', 'move'] as const)('refuses %s', async (action) => {
+    await expect(
+      messages(accounts, { action, uid: 1, account: 'user1@gmail.com', destination: 'X' } as any)
+    ).rejects.toThrow('draft-only mode')
+    expect(mockTrashEmails).not.toHaveBeenCalled()
+    expect(mockMoveEmails).not.toHaveBeenCalled()
+  })
+
+  it('still allows search and flag changes', async () => {
+    mockSearchEmails.mockResolvedValue({ total: 0, messages: [] } as any)
+    mockModifyFlags.mockResolvedValue({ success: true } as any)
+
+    await messages(accounts, { action: 'search', account: 'user1@gmail.com' })
+    await messages(accounts, { action: 'mark_read', uid: 1, account: 'user1@gmail.com' })
+
+    expect(mockSearchEmails).toHaveBeenCalled()
+    expect(mockModifyFlags).toHaveBeenCalled()
   })
 })

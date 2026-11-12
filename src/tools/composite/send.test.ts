@@ -1,10 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from '../helpers/config.js'
 
 // --- Mocks ---
 vi.mock('../helpers/imap-client.js', () => ({
   readEmail: vi.fn(),
   resolveSentFolder: vi.fn(),
+  resolveDraftsFolder: vi.fn(),
   appendToFolder: vi.fn()
 }))
 
@@ -14,7 +15,7 @@ vi.mock('../helpers/smtp-client.js', () => ({
   forwardEmail: vi.fn()
 }))
 
-import { appendToFolder, readEmail, resolveSentFolder } from '../helpers/imap-client.js'
+import { appendToFolder, readEmail, resolveDraftsFolder, resolveSentFolder } from '../helpers/imap-client.js'
 import { forwardEmail, replyToEmail, sendNewEmail } from '../helpers/smtp-client.js'
 import { send } from './send.js'
 
@@ -24,6 +25,7 @@ const mockReplyToEmail = vi.mocked(replyToEmail)
 const mockForwardEmail = vi.mocked(forwardEmail)
 const mockResolveSentFolder = vi.mocked(resolveSentFolder)
 const mockAppendToFolder = vi.mocked(appendToFolder)
+const mockResolveDraftsFolder = vi.mocked(resolveDraftsFolder)
 
 const gmailAccounts: AccountConfig[] = [
   {
@@ -93,7 +95,8 @@ describe('send - new', () => {
     expect(result.success).toBe(true)
     expect(mockSendNewEmail).toHaveBeenCalledWith(
       gmailAccounts[0],
-      expect.objectContaining({ to: 'recipient@test.com', subject: 'Hello', body: 'World' })
+      expect.objectContaining({ to: 'recipient@test.com', subject: 'Hello', body: 'World' }),
+      true
     )
   })
 
@@ -124,7 +127,8 @@ describe('send - new', () => {
 
     expect(mockSendNewEmail).toHaveBeenCalledWith(
       gmailAccounts[0],
-      expect.objectContaining({ cc: 'cc@test.com', bcc: 'bcc@test.com' })
+      expect.objectContaining({ cc: 'cc@test.com', bcc: 'bcc@test.com' }),
+      true
     )
   })
 
@@ -141,7 +145,7 @@ describe('send - new', () => {
       attachments
     })
 
-    expect(mockSendNewEmail).toHaveBeenCalledWith(gmailAccounts[0], expect.objectContaining({ attachments }))
+    expect(mockSendNewEmail).toHaveBeenCalledWith(gmailAccounts[0], expect.objectContaining({ attachments }), true)
   })
 })
 
@@ -183,7 +187,8 @@ describe('send - reply', () => {
       expect.objectContaining({
         in_reply_to: '<original@test>',
         references: '<ref1@test>'
-      })
+      }),
+      true
     )
   })
 
@@ -286,7 +291,8 @@ describe('send - forward', () => {
     expect(result.action).toBe('forward')
     expect(mockForwardEmail).toHaveBeenCalledWith(
       gmailAccounts[0],
-      expect.objectContaining({ original_body: 'original content' })
+      expect.objectContaining({ original_body: 'original content' }),
+      true
     )
   })
 
@@ -676,7 +682,8 @@ describe('send - reply auto-derive', () => {
       gmailAccounts[0],
       expect.objectContaining({
         to: 'original@test.com'
-      })
+      }),
+      true
     )
   })
 
@@ -709,7 +716,150 @@ describe('send - reply auto-derive', () => {
       expect.objectContaining({
         in_reply_to: '<msgid77@test>',
         references: '<msgid77@test>'
-      })
+      }),
+      true
     )
+  })
+})
+
+// ============================================================================
+// draft: true
+// ============================================================================
+
+describe('send - draft param', () => {
+  beforeEach(() => {
+    mockResolveDraftsFolder.mockResolvedValue('Drafts')
+  })
+
+  it('saves to Drafts instead of sending when asked', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<d@gmail.com>', raw: Buffer.from('raw') })
+
+    const result = await send(gmailAccounts, {
+      action: 'new',
+      account: 'user1@gmail.com',
+      to: 'r@test.com',
+      subject: 'T',
+      body: 'B',
+      draft: true
+    })
+
+    expect(mockSendNewEmail).toHaveBeenCalledWith(gmailAccounts[0], expect.anything(), false)
+    expect(mockAppendToFolder).toHaveBeenCalledWith(gmailAccounts[0], 'Drafts', expect.any(Buffer), [
+      '\\Draft',
+      '\\Seen'
+    ])
+    expect(result).toMatchObject({ sent: false, saved_to_drafts: true, drafts_folder: 'Drafts' })
+  })
+
+  it('sends as before with draft: false', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<s@gmail.com>', raw: Buffer.from('raw') })
+
+    const result = await send(gmailAccounts, {
+      action: 'new',
+      account: 'user1@gmail.com',
+      to: 'r@test.com',
+      subject: 'T',
+      body: 'B',
+      draft: false
+    })
+
+    expect(mockSendNewEmail).toHaveBeenCalledWith(gmailAccounts[0], expect.anything(), true)
+    expect(mockResolveDraftsFolder).not.toHaveBeenCalled()
+    expect(result.saved_to_drafts).toBeUndefined()
+  })
+})
+
+// ============================================================================
+// draft-only mode
+// ============================================================================
+
+describe('send - draft-only mode', () => {
+  beforeEach(() => {
+    vi.stubEnv('EMAIL_MCP_DRAFT_ONLY', '1')
+    mockResolveDraftsFolder.mockResolvedValue('Drafts')
+  })
+  afterEach(() => {
+    vi.unstubAllEnvs()
+  })
+
+  it('composes without delivering and files the message in Drafts', async () => {
+    mockSendNewEmail.mockResolvedValue({
+      success: true,
+      message_id: '<draft@icloud.com>',
+      raw: Buffer.from('raw-email')
+    })
+
+    const result = await send(icloudAccounts, {
+      action: 'new',
+      account: 'user1@icloud.com',
+      to: 'r@test.com',
+      subject: 'T',
+      body: 'B'
+    })
+
+    expect(mockSendNewEmail).toHaveBeenCalledWith(
+      icloudAccounts[0],
+      expect.objectContaining({ to: 'r@test.com' }),
+      false
+    )
+    expect(mockAppendToFolder).toHaveBeenCalledWith(icloudAccounts[0], 'Drafts', expect.any(Buffer), [
+      '\\Draft',
+      '\\Seen'
+    ])
+    expect(mockResolveSentFolder).not.toHaveBeenCalled()
+    expect(result).toMatchObject({ sent: false, saved_to_drafts: true, drafts_folder: 'Drafts' })
+    expect(result.saved_to_sent).toBeUndefined()
+  })
+
+  it('drafts replies and forwards too', async () => {
+    mockReadEmail.mockResolvedValue({
+      uid: 1,
+      message_id: '<orig@test>',
+      references: '',
+      subject: 'S',
+      from: 'a@test.com',
+      body_text: 'orig'
+    } as any)
+    mockReplyToEmail.mockResolvedValue({ success: true, message_id: '<r@test>', raw: Buffer.from('r') })
+    mockForwardEmail.mockResolvedValue({ success: true, message_id: '<f@test>', raw: Buffer.from('f') })
+
+    const reply = await send(icloudAccounts, { action: 'reply', account: 'user1@icloud.com', uid: 1, body: 'B' })
+    const forward = await send(icloudAccounts, {
+      action: 'forward',
+      account: 'user1@icloud.com',
+      uid: 1,
+      to: 'x@test.com',
+      body: 'B'
+    })
+
+    expect(mockReplyToEmail).toHaveBeenCalledWith(icloudAccounts[0], expect.anything(), false)
+    expect(mockForwardEmail).toHaveBeenCalledWith(icloudAccounts[0], expect.anything(), false)
+    expect(reply.saved_to_drafts).toBe(true)
+    expect(forward.saved_to_drafts).toBe(true)
+  })
+
+  it('drafts even when the caller asks to send', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<d@test>', raw: Buffer.from('raw') })
+
+    const result = await send(icloudAccounts, {
+      action: 'new',
+      account: 'user1@icloud.com',
+      to: 'r@test.com',
+      subject: 'T',
+      body: 'B',
+      draft: false
+    })
+
+    expect(mockSendNewEmail).toHaveBeenCalledWith(icloudAccounts[0], expect.anything(), false)
+    expect(result.saved_to_drafts).toBe(true)
+  })
+
+  it('fails loudly when the draft cannot be saved', async () => {
+    mockSendNewEmail.mockResolvedValue({ success: true, message_id: '<d@test>', raw: Buffer.from('raw') })
+    mockAppendToFolder.mockResolvedValue(false)
+
+    await expect(
+      send(icloudAccounts, { action: 'new', account: 'user1@icloud.com', to: 'r@test.com', subject: 'T', body: 'B' })
+    ).rejects.toThrow('could not save the draft')
   })
 })
