@@ -2,6 +2,36 @@
 
 <!-- version list -->
 
+## v1.43.0 (2026-11-12)
+
+### Bug Fixes
+
+- Declare the renamed registry identity ([#1247](https://github.com/n24q02m/email/pull/1247),
+  [`c55b997`](https://github.com/n24q02m/email/commit/c55b99713064d0cb923b237d7a8eed2b6e528fc1))
+
+- Point README instructions at the email plugin name
+  ([#1246](https://github.com/n24q02m/email/pull/1246),
+  [`a4448a4`](https://github.com/n24q02m/email/commit/a4448a4cf4021bbacf14f2ec534573de4e42b1b6))
+
+- **deps**: Lock file maintenance ([#1244](https://github.com/n24q02m/email/pull/1244),
+  [`07bcd8d`](https://github.com/n24q02m/email/commit/07bcd8ddf350ec4ee78623c6150a67e9b37f4ade))
+
+- **deps**: Update @biomejs/biome to ^2.6.5 ([#1243](https://github.com/n24q02m/email/pull/1243),
+  [`4404f95`](https://github.com/n24q02m/email/commit/4404f95208763415ac9ef45025ef6b3ec07dc1a0))
+
+- **deps**: Update minor dependencies ([#1221](https://github.com/n24q02m/email/pull/1221),
+  [`ef0cfd9`](https://github.com/n24q02m/email/commit/ef0cfd9efca5a0c5465fbd21f786b1704ce7d388))
+
+- **deps**: Update smol-toml to ^1.9.1 ([#1241](https://github.com/n24q02m/email/pull/1241),
+  [`7100610`](https://github.com/n24q02m/email/commit/71006101befca8648f120d0b2730a42e0d1b1ee0))
+
+### Features
+
+- Save outbound mail as a draft (draft param, EMAIL_MCP_DRAFT_ONLY)
+  ([#1245](https://github.com/n24q02m/email/pull/1245),
+  [`0fc1bd2`](https://github.com/n24q02m/email/commit/0fc1bd2aa61ad6b887e9060405cded81ecb3054e))
+
+
 ## v1.43.0-beta.1 (2026-11-10)
 
 ### Bug Fixes
