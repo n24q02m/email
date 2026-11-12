@@ -28,7 +28,7 @@ mcp-name: io.github.n24q02m/better-email-mcp
 | [agent-chat-plugin](https://github.com/n24q02m/agent-chat-plugin) | Peer AI agents chat in a shared folder — no human relay, no orchestrator, wor... | Tooling |
 | [better-code-review-graph](https://github.com/n24q02m/better-code-review-graph) | Knowledge graph for token-efficient code reviews -- semantic search and call-... | MCP |
 | [better-drive](https://github.com/n24q02m/better-drive) | 2-way Google Drive sync with .driveignore filter — rclone engine, Windows tray | Tooling |
-| [better-email-mcp](https://github.com/n24q02m/better-email-mcp) | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP |
+| [email](https://github.com/n24q02m/email) | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP |
 | [better-godot-mcp](https://github.com/n24q02m/better-godot-mcp) | Composite MCP server for Godot Engine -- 17 composite tools for AI-assisted g... | MCP |
 | [better-notion-mcp](https://github.com/n24q02m/better-notion-mcp) | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP |
 | [better-semantic-release](https://github.com/n24q02m/better-semantic-release) | Drop-in python-semantic-release fork with built-in release-safety guards (orp... | Tooling |
@@ -111,7 +111,7 @@ Most providers use an **App Password** (no OAuth setup); Outlook/Hotmail/Live us
 
 | Client | Install |
 |:-------|:--------|
-| Claude Code | `/plugin marketplace add n24q02m/claude-plugins` + `/plugin install better-email-mcp@n24q02m-plugins` (stdio; prompts for `EMAIL_CREDENTIALS`), or an `mcpServers` entry in `.mcp.json` / client settings |
+| Claude Code | `/plugin marketplace add n24q02m/claude-plugins` + `/plugin install email@n24q02m-plugins` (stdio; prompts for `EMAIL_CREDENTIALS`), or an `mcpServers` entry in `.mcp.json` / client settings |
 | Codex CLI | `[mcp_servers.email]` block in `~/.codex/config.toml` (stdio `command`/`args` or HTTP `type`/`url`) |
 | OpenCode | `mcpServers` block in `opencode.json` |
 | Cursor / Windsurf / Gemini CLI / any MCP client | `mcpServers` JSON in the client's config — same shape as the example above |
@@ -197,7 +197,7 @@ Full docs at **[docs.n24q02m.com/servers/email/](https://docs.n24q02m.com/server
 **Install with AI agent** -- paste this to your AI coding agent:
 
 > Install MCP server `email` following the steps at
-> https://raw.githubusercontent.com/n24q02m/claude-plugins/main/plugins/better-email-mcp/setup-with-agent.md
+> https://raw.githubusercontent.com/n24q02m/claude-plugins/main/plugins/email/setup-with-agent.md
 
 ## Tools
 
