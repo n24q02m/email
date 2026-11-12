@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.n24q02m/better-email-mcp",
+  "name": "io.github.n24q02m/email",
   "description": "IMAP/SMTP email for AI agents -- read, send, organize, and manage attachments across accounts.",
   "repository": {
     "url": "https://github.com/n24q02m/email.git",

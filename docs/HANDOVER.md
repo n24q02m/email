@@ -2,7 +2,7 @@
 
 ## Current product
 
-`email` is an IMAP/SMTP MCP server for AI agents: search and read mail, compose/reply/forward, organise messages across folders, and list or download attachments over any standard mailbox. The published package is `@n24q02m/email`; the `email` binary also answers to its legacy name `better-email-mcp`, and the MCP Registry id stays `io.github.n24q02m/better-email-mcp`.
+`email` is an IMAP/SMTP MCP server for AI agents: search and read mail, compose/reply/forward, organise messages across folders, and list or download attachments over any standard mailbox. The published package is `@n24q02m/email`; the `email` binary also answers to its legacy name `better-email-mcp`, and the MCP Registry id is `io.github.n24q02m/email` (the entry published earlier under `io.github.n24q02m/better-email-mcp` stays frozen under that old name).
 
 **Version: 1.42.0** -- the `version` field of `package.json` at the commit that added this handover. `semantic-release.toml` bumps `package.json`, `.claude-plugin/plugin.json`, and `server.json` together on every release, so treat this line as a snapshot and re-read `package.json` before using it as current.
 
@@ -107,7 +107,7 @@ Rollback is forward: revert or fix the source commit and dispatch the pipeline a
 - App passwords are the supported path for most providers; Microsoft disabled basic auth for Exchange Online, so a work/school mailbox needs the OAuth flow plus `OUTLOOK_TENANT`/`OUTLOOK_EXTRA_DOMAINS`.
 - Attachment transfer is bounded (10 files, 25 MB decoded outbound; 25 MB per provider inbound) and `download` returns base64 in the tool result rather than writing to disk.
 - Token files are plain JSON with POSIX mode 0600; Windows does not enforce that mode.
-- The legacy `@n24q02m/better-email-mcp` package receives one final release, then freezes. The Registry id keeps the old name; the repository, package, image, and binary are `email`.
+- The legacy `@n24q02m/better-email-mcp` package receives one final release, then freezes. The repository, package, image, binary, and MCP Registry id are `email`; the registry entry published earlier as `io.github.n24q02m/better-email-mcp` stays frozen under that old name.
 - The version line at the top of this file is a release snapshot, not a live value.
 
 ## Week-one operator checklist
