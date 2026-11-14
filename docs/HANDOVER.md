@@ -4,7 +4,7 @@
 
 `email` is an IMAP/SMTP MCP server for AI agents: search and read mail, compose/reply/forward, organise messages across folders, and list or download attachments over any standard mailbox. The published package is `@n24q02m/email`; the `email` binary also answers to its legacy name `better-email-mcp`, and the MCP Registry id is `io.github.n24q02m/email` (the entry published earlier under `io.github.n24q02m/better-email-mcp` stays frozen under that old name).
 
-**Version: 1.43.0** -- the `version` field of `package.json` at the commit that added this handover. `semantic-release.toml` bumps `package.json`, `.claude-plugin/plugin.json`, and `server.json` together on every release, so treat this line as a snapshot and re-read `package.json` before using it as current.
+**Version:** the `version` field of `package.json` is the only source. `semantic-release.toml` bumps `package.json`, `.claude-plugin/plugin.json`, and `server.json` together on every release, and the published version is `npm view @n24q02m/email version`. This file does not repeat the number, so a release never leaves it stale.
 
 The server runs on the MCP TypeScript SDK with hull (`@n24q02m/hull`) supplying the HTTP transport, bearer-token auth, the shared operator CLI, and the encrypted config store. Mail access is plain IMAP/SMTP through `imapflow` with `mailparser` in `src/tools/helpers/`, with provider settings auto-discovered from the address and a per-account override for custom hosts. There is no OAuth server, relay form, daemon proxy, or hosted endpoint; the one bundled OAuth flow is the Outlook/Hotmail/Live device-code sign-in described below.
 
@@ -117,7 +117,7 @@ Rollback is forward: revert or fix the source commit and dispatch the pipeline a
 - Attachment transfer is bounded (10 files, 25 MB decoded outbound; 25 MB per provider inbound) and `download` returns base64 in the tool result rather than writing to disk.
 - Token files are plain JSON with POSIX mode 0600; Windows does not enforce that mode.
 - The legacy `@n24q02m/better-email-mcp` package receives one final release, then freezes. The repository, package, image, binary, and MCP Registry id are `email`; the registry entry published earlier as `io.github.n24q02m/better-email-mcp` stays frozen under that old name.
-- The version line at the top of this file is a release snapshot, not a live value.
+- This file records where the version lives, not the number; read `package.json` or npm for the current value.
 
 ## Week-one operator checklist
 
