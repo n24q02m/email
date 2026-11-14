@@ -3,6 +3,7 @@
  * All email message operations in one unified interface
  */
 
+import { clearScoped, scopedKey } from '../../tenant.js'
 import type { AccountConfig } from '../helpers/config.js'
 import { resolveAccounts, resolveSingleAccount } from '../helpers/config.js'
 import { refuseInDraftOnly } from '../helpers/draft-only.js'
@@ -15,11 +16,9 @@ const archiveFolderCache = new Map<string, Promise<string>>()
 const DEFAULT_PREVIEW_MAX_CHARS = 4_000
 const MAX_PREVIEW_MAX_CHARS = 100_000
 
-/** Clear the archive folder path cache */
+/** Clear the archive folder path cache (the caller's entries in multi-user mode) */
 export function clearArchiveFolderCache(): number {
-  const count = archiveFolderCache.size
-  archiveFolderCache.clear()
-  return count
+  return clearScoped(archiveFolderCache)
 }
 
 export interface MessagesInput {
@@ -307,24 +306,22 @@ function isArchiveFolder(folder: { path: string; flags: string[] }): boolean {
  * Results are cached per account.
  */
 async function resolveArchiveFolder(account: AccountConfig): Promise<string> {
-  const cached = archiveFolderCache.get(account.id)
+  const cacheKey = scopedKey(account.id)
+  const cached = archiveFolderCache.get(cacheKey)
   if (cached) return cached
 
   const resolvePromise = (async () => {
-    // Detect archive folder based on provider
-    let archiveFolder = '[Gmail]/All Mail'
-    if (account.imap.host.includes('office365') || account.imap.host.includes('outlook')) {
-      archiveFolder = 'Archive'
-    } else if (account.imap.host.includes('yahoo')) {
-      archiveFolder = 'Archive'
-    }
+    // Provider default when the folder listing finds nothing: the Gmail path only
+    // for a Gmail host, otherwise the RFC 6154 name. A failed MOVE now surfaces
+    // as MOVE_FAILED instead of a silent success.
+    const archiveFolder = account.imap.host.includes('gmail') ? '[Gmail]/All Mail' : 'Archive'
 
     // Try to find actual archive folder
     try {
       const folders = await listFolders(account)
       const found = folders.find(isArchiveFolder)
       if (found) {
-        archiveFolder = found.path
+        return found.path
       }
     } catch {
       // Use default if folder listing fails
@@ -333,12 +330,12 @@ async function resolveArchiveFolder(account: AccountConfig): Promise<string> {
     return archiveFolder
   })()
 
-  archiveFolderCache.set(account.id, resolvePromise)
+  archiveFolderCache.set(cacheKey, resolvePromise)
 
   try {
     return await resolvePromise
   } catch (err) {
-    archiveFolderCache.delete(account.id)
+    archiveFolderCache.delete(cacheKey)
     throw err
   }
 }
