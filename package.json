@@ -63,7 +63,7 @@
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
-    "@n24q02m/hull": "^0.4.0",
+    "@n24q02m/hull": "^0.6.1",
     "html-to-text": "^10.0.1",
     "imapflow": "^1.7.8",
     "mailparser": "^3.14.2",
