@@ -82,7 +82,7 @@ mcp-name: io.github.n24q02m/email
 
 ## Install
 
-The server runs in two modes: **stdio** (default, single-user, credentials from env vars) and **HTTP** (opt-in, single-user with a bearer token). For stdio, add it to your MCP client config:
+The server runs in two modes: **stdio** (default, single-user, credentials from env vars) and **HTTP** (opt-in: one shared bearer token, or several users with separate mailboxes from a `users.toml` token table). For stdio, add it to your MCP client config:
 
 ```jsonc
 {
@@ -129,9 +129,9 @@ The package ships one binary, `email` (run via `npx @n24q02m/email`), also insta
 | Invocation | Description |
 |:-----------|:------------|
 | `email` | Start the MCP server over **stdio** (default). Reads credentials from `EMAIL_CREDENTIALS`, or from `EMAIL_USER` + `EMAIL_APP_PASSWORD` |
-| `email --http` | Start the server in **HTTP** (single-user, bearer token) mode. Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
-| `email auth [outlook] <email> [--client-id=<id>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.email/tokens.json`. The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
-| `email logout [<email>]` | Clear the locally stored Outlook token(s). Omit `<email>` to clear every stored token |
+| `email --http` | Start the server in **HTTP** mode (auth chosen by `MCP_AUTH_MODE`, see [Remote (HTTP Mode)](#remote-http-mode)). Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
+| `email auth [outlook] <email> [--client-id=<id>] [--user=<namespace>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.email/tokens.json`, or with `--user` to that HTTP multi-user namespace (`~/.email/users/<namespace>/tokens.json`). The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
+| `email logout [<email>] [--user=<namespace>]` | Clear the locally stored Outlook token(s), of one multi-user namespace with `--user`. Omit `<email>` to clear every stored token |
 | `email config status` / `email status` | Report whether a stored credential file exists (never prints credential values) |
 | `email config delete --yes` | Delete the stored credential file |
 | `email doctor` | Node, credential backend, store-directory, and session checks |
@@ -154,8 +154,8 @@ Each tool keeps its MCP name and actions; its JSON-Schema properties become `--f
 # stdio server (normally launched by your MCP client, not by hand)
 EMAIL_CREDENTIALS="user@gmail.com:app-password" npx @n24q02m/email
 
-# HTTP multi-user server
-npx @n24q02m/email --http
+# HTTP server, several users with separate mailboxes (see Remote (HTTP Mode))
+MCP_AUTH_MODE=multi npx @n24q02m/email --http
 
 # One-off Outlook OAuth device-code sign-in
 npx @n24q02m/email auth user@outlook.com
@@ -244,11 +244,11 @@ How email stacks up against direct competitors in each pillar:
 | Auto-discovery from email address | Yes | Yes (8 providers) | n/a (Gmail only) | No (manual host/port) |
 | Bundled Outlook OAuth (no user Azure app) | Yes (device-code, Thunderbird-pattern client) | partial (OAuth2 XOAUTH2, experimental) | No (user-supplied Google OAuth) | No |
 | Attachments (list + download) | Yes | Yes | Yes | Yes |
-| HTTP mode (single-user, bearer token; self-hostable) | Yes | No (stdio only) | No (stdio only) | No (stdio only) |
+| HTTP mode (bearer token or per-user tokens with isolated mailboxes; self-hostable) | Yes | No (stdio only) | No (stdio only) | No (stdio only) |
 
 ## Remote (HTTP Mode)
 
-Run as a single-user HTTP server, authenticated with a shared bearer token:
+Run as an HTTP server. Clients send a bearer token; what the token reaches depends on the auth mode:
 
 ```jsonc
 {
@@ -262,22 +262,58 @@ Run as a single-user HTTP server, authenticated with a shared bearer token:
 }
 ```
 
+| `MCP_AUTH_MODE` | Who can call | Which mailboxes a call reaches |
+|:----------------|:-------------|:-------------------------------|
+| `token` (or unset with a hash) | anyone holding the one shared token (`MCP_AUTH_TOKEN_HASH`) | the server-wide accounts (accounts file, env vars, `email auth outlook`) |
+| `multi` | each user in a [hull](https://github.com/n24q02m/hull) `users.toml` token table (`MCP_USERS_FILE`) | only that user's own namespace: `users/<namespace>/accounts.toml` and `users/<namespace>/tokens.json` under the data directory |
+| `no-auth` (or unset, no hash, loopback bind) | anything that can reach the loopback port | the server-wide accounts |
+
+A request with no token or a wrong one gets `401`. With no mode and no hash the server refuses to start on a non-loopback bind.
+
 ### Self-Hosting (HTTP Mode)
 
-Single-user mode: one shared bearer token. Accounts come from an [accounts file](#accounts-file-single-and-multi-account), the env vars, or `email auth outlook <address>`. The mode (`single`/`multi`) applies here too: with several accounts, a single-target tool requires `account`, and a fan-out read still returns the healthy accounts when one fails.
+Shared-token mode: one principal. Accounts come from an [accounts file](#accounts-file-single-and-multi-account), the env vars, or `email auth outlook <address>`. The account mode (`single`/`multi`) applies here too: with several accounts, a single-target tool requires `account`, and a fan-out read still returns the healthy accounts when one fails.
 
 ```bash
-export EMAIL_MCP_TOKEN_HASH='scrypt$...'  # required: the container binds 0.0.0.0 and refuses to start without it
+export MCP_AUTH_TOKEN_HASH='scrypt$...'  # required: the container binds 0.0.0.0 and refuses to start without auth
 export EMAIL_CREDENTIALS='you@gmail.com:app-password'
 docker run -p 8080:8080 \
   -e PORT=8080 \
-  -e EMAIL_MCP_TOKEN_HASH \
+  -e MCP_AUTH_TOKEN_HASH \
   -e EMAIL_CREDENTIALS \
   -e HOME=/data \
   -v email-data:/data \
   n24q02m/email:latest
 ```
-Mint the hash with `printf '%s' "$TOKEN" | email token hash`; the token is read from stdin, never argv. Clients send the raw token as `Authorization: Bearer <token>`. Saved Outlook tokens live under `/data/.email/` and persist when the `/data` volume is kept.
+Mint the hash with `printf '%s' "$TOKEN" | email token hash`; the token is read from stdin, never argv. Clients send the raw token as `Authorization: Bearer <token>`. Saved Outlook tokens live under `/data/.email/` and persist when the `/data` volume is kept. `EMAIL_MCP_TOKEN_HASH` is the older name of `MCP_AUTH_TOKEN_HASH` and still works.
+
+### Self-Hosting for several users (multi mode)
+
+Each user gets their own bearer token and their own mailboxes; no user can see another's, and the server-wide accounts (`EMAIL_ACCOUNTS_FILE`, `EMAIL_CREDENTIALS`, `EMAIL_USER`) are not served to anyone in this mode. Provisioning is host-side:
+
+```toml
+# users.toml (MCP_USERS_FILE, default ~/.hull/users.toml)
+[users.alice]
+token_hash = "scrypt$..."   # printf '%s' "$ALICE_TOKEN" | email token hash
+namespace = "alice"
+
+[users.bob]
+token_hash = "scrypt$..."
+namespace = "bob"
+[users.bob.limits]
+rpm = 60
+```
+
+Then give each namespace its mailboxes under the data directory, in the [accounts file](#accounts-file-single-and-multi-account) schema:
+
+```bash
+# <data dir>/users/alice/accounts.toml  (in Docker: /data/.email/users/alice/accounts.toml)
+# and/or an Outlook grant for one namespace:
+email auth outlook alice@outlook.com --user alice
+MCP_AUTH_MODE=multi MCP_USERS_FILE=/data/users.toml email --http
+```
+
+Accounts are re-read on every tool call, so an edited `accounts.toml` applies without a restart. A namespace is one path segment (letters, digits, `_`, `-`). The `config` tool reports a caller's own accounts; `setup_reset` and `setup_complete` are refused for a multi-user caller.
 
 ### Self-Hosting with Docker Compose
 
@@ -285,7 +321,7 @@ The repository ships `docker-compose.http.yml`, which builds the `http` image ta
 publishes it on host loopback only (`127.0.0.1:8082`):
 
 ```bash
-export EMAIL_MCP_TOKEN_HASH='scrypt$...'   # required; see the note above
+export MCP_AUTH_TOKEN_HASH='scrypt$...'   # required; see the note above
 export EMAIL_CREDENTIALS='you@gmail.com:app-password'
 docker compose -f docker-compose.http.yml up
 ```
@@ -319,7 +355,10 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `EMAIL_DATA_DIR` | No | `$HOME` | Base directory for this server's own files. Saved Outlook tokens live in `<dir>/.email/tokens.json`, so the default is `~/.email/tokens.json` (the Docker image sets `HOME=/data`); a file an earlier release wrote under `<dir>/.better-email-mcp/` is copied forward on startup. A relative value is resolved under `$HOME` and must stay inside it; use an absolute path to point at a mounted volume |
 | `PORT` | No | `0` (OS-assigned) | Server port (http mode); set explicitly (e.g. `8080`) to bind a fixed port |
 | `HOST` | No | - | Bind address (http mode) |
-| `EMAIL_MCP_TOKEN_HASH` | No (http; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. Without it, HTTP runs unauthenticated only on loopback |
+| `MCP_AUTH_MODE` | No (http) | - | `token`, `multi` or `no-auth`. Unset: a token hash selects `token`; without one HTTP runs unauthenticated only on loopback and refuses any other bind |
+| `MCP_AUTH_TOKEN_HASH` | No (http `token`; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. `EMAIL_MCP_TOKEN_HASH` is the older name and still works |
+| `MCP_RPM` | No (http `token`) | - | Per-minute request cap for the shared token |
+| `MCP_USERS_FILE` | No (http `multi`) | `~/.hull/users.toml` | users.toml token table: one `[users.<id>]` row per user with `token_hash`, `namespace`, optional `enabled` and `[users.<id>.limits] rpm` |
 | `EMAIL_MCP_DRAFT_ONLY` | No | - | Set to `1` for agents that read untrusted mail: every `new`/`reply`/`forward` is saved to the account's Drafts folder instead of being sent (as if called with `draft: true`), and `move`/`archive`/`trash`/`setup_reset` are removed from the tool list (and refused if called anyway). Search, read and flag changes still work |
 | `OUTLOOK_CLIENT_ID` | No | `d56f8c71-9f7c-43f4-9934-be29cb6e77b0` (bundled public client) | Override the bundled Azure AD public client for self-hosted Outlook OAuth2 (or `--client-id=<id>` on `auth`, which overrides this env var) |
 | `OUTLOOK_EMAIL` | No | - | Workaround when Microsoft device-code response omits the email field |
@@ -505,11 +544,12 @@ bun run dev
 
 ## Trust Model
 
-Credentials are single-user: whoever runs the server (or your OS user for stdio) can read them. Storage depends on the deployment mode:
+Whoever runs the server (or your OS user for stdio) can read every credential it stores. In HTTP `multi` mode each caller reaches only its own namespace, but the operator still holds all of them. Storage depends on the deployment mode:
 
 | Mode | Storage | Encryption | Who can read your data? |
 |---|---|---|---|
 | HTTP (Docker) | Env vars (`EMAIL_CREDENTIALS`) and saved Outlook tokens in `$HOME/.email/tokens.json` (the `/data` volume) | Tokens: plain JSON, POSIX file mode 0600 | Server operator |
+| HTTP `multi` | Per user: `$HOME/.email/users/<namespace>/accounts.toml` and `tokens.json` (the `/data` volume) | Plain files, POSIX file mode 0600 for tokens | Server operator; each caller sees only its own namespace |
 | stdio | Env vars; saved Outlook tokens in `~/.email/tokens.json`; legacy `config.enc` from earlier releases is still read | Tokens: plain JSON, POSIX file mode 0600 | Only your OS user |
 
 ## License

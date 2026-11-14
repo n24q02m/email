@@ -269,3 +269,95 @@ describe('help output', () => {
     expect(out).toContain('config-tool <action>')
   })
 })
+
+describe('argv coercion follows the tool schema', () => {
+  const inputFor = async (argv: string[]) => {
+    vi.mocked(messages).mockResolvedValue({ ok: true })
+    const code = await runToolCommand('messages', argv)
+    expect(err).toBe('')
+    expect(code).toBe(0)
+    return vi.mocked(messages).mock.calls.at(-1)?.[1]
+  }
+
+  it.each([
+    [['read', '--full'], { action: 'read', full: true }],
+    [['read', '--full', 'false'], { action: 'read', full: false }],
+    [['read', '--full=yes'], { action: 'read', full: true }],
+    [['read', '--full', '--json'], { action: 'read', full: true }],
+    [['read', '--no-full'], { action: 'read', full: false }],
+    [['read', '--no-full=false'], { action: 'read', full: true }],
+    [['move', '--uids', '[5, 6]'], { action: 'move', uids: [5, 6] }],
+    [['move', '--uids='], { action: 'move', uids: [] }],
+    [['new', '--attachments', '[{"filename":"a.txt"}]'], { action: 'new', attachments: [{ filename: 'a.txt' }] }],
+    [['search', '--limit=3'], { action: 'search', limit: 3 }]
+  ])('%j', async (argv, expected) => {
+    expect(await inputFor(argv as string[])).toEqual(expected)
+  })
+
+  it.each([
+    [['read', '--full', 'maybe'], "--full expects true or false, got 'maybe'"],
+    [['move', '--uids', '[5,'], "--uids expects JSON, got '[5,'"],
+    [['move', '--uids', '5,x'], "--uids expects a number, got 'x'"],
+    [['search', '--limit', 'ten'], "--limit expects a number, got 'ten'"],
+    [['new', '--attachments', 'a.txt'], "--attachments expects JSON, got 'a.txt'"],
+    [['search', '--query'], 'messages: --query needs a value'],
+    [['search', '--query', '--json'], 'messages: --query needs a value'],
+    [['search', '-x'], 'Unknown option: --x'],
+    [['search', 'extra'], "messages: unexpected argument 'extra'"],
+    [['bogus'], "<action>: invalid value 'bogus'"]
+  ])('%j fails with a usage error', async (argv, message) => {
+    const code = await runToolCommand('messages', argv as string[])
+    expect(code).toBe(1)
+    expect(out).toBe('')
+    expect(err).toContain(message)
+    expect(messages).not.toHaveBeenCalled()
+  })
+
+  it('unmappedTools defaults to the CLI command table', () => {
+    expect(unmappedTools(['messages', 'not-a-tool'])).toEqual(['not-a-tool'])
+  })
+})
+
+describe('human rendering of tool results', () => {
+  it('renders nested arrays, records and empty values', async () => {
+    vi.mocked(messages).mockResolvedValue({
+      empty: [],
+      skipped: null,
+      matrix: [[1, 2], 'x', null],
+      rows: [{ uid: 1, tags: [], meta: { folder: 'INBOX' }, gone: null }, { nested: { a: 1 } }],
+      settings: { flags: [] }
+    })
+
+    expect(await runToolCommand('messages', ['search'])).toBe(0)
+    expect(out).toBe(
+      [
+        'empty: (empty)',
+        'matrix:',
+        '  -',
+        '    - 1',
+        '    - 2',
+        '  - x',
+        '  - null',
+        'rows:',
+        '  - uid=1',
+        '    tags: (empty)',
+        '    meta:',
+        '      folder: INBOX',
+        '  -',
+        '    nested:',
+        '      a: 1',
+        'settings:',
+        '  flags: (empty)',
+        ''
+      ].join('\n')
+    )
+  })
+
+  it('prints a scalar result as is and an empty result as ok', async () => {
+    vi.mocked(messages).mockResolvedValueOnce('done' as never)
+    expect(await runToolCommand('messages', ['search'])).toBe(0)
+    vi.mocked(messages).mockResolvedValueOnce(null as never)
+    expect(await runToolCommand('messages', ['search'])).toBe(0)
+    expect(out).toBe('done\nok\n')
+  })
+})

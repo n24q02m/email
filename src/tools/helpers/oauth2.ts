@@ -8,10 +8,10 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { tryOpenBrowser } from '@n24q02m/hull'
 import { setState } from '../../credential-state.js'
-import { resolveDataDir } from '../../data-dir.js'
+import { callerDataDir, callerNamespace, scopedKey } from '../../tenant.js'
 import { isSafeUrl } from './security.js'
 
 // Microsoft OAuth2 endpoints. The tenant segment decides which directory signs
@@ -90,11 +90,14 @@ const TOKEN_REFRESH_BUFFER_SECONDS = 300
 // Persistent token storage: `<data dir>/tokens.json` (0600), where the data dir
 // is `EMAIL_DATA_DIR` when set, else `~/.email` (see src/data-dir.ts); a file an
 // earlier release wrote under `~/.better-email-mcp` is copied forward on startup.
-// Resolved per call, not at import time, so the override applies to the whole
-// process and tests can point it at a temporary directory. One seam for the
-// path: every read, write and delete below has to agree on the same file.
-function tokenFile(): string {
-  return join(resolveDataDir(), 'tokens.json')
+// An HTTP multi-user caller gets its own `<data dir>/users/<namespace>/tokens.json`
+// (see src/tenant.ts), so one caller can never load another caller's grant by
+// naming the same address. Resolved per call, not at import time, so the override
+// and the caller's namespace apply, and tests can point it at a temporary
+// directory. One seam for the path: every read, write and delete below has to
+// agree on the same file.
+export function tokenFile(): string {
+  return join(callerDataDir(), 'tokens.json')
 }
 
 export interface OAuth2Tokens {
@@ -258,13 +261,21 @@ export function getClientId(): string {
 }
 
 /**
- * In-memory cache of the email-keyed token file (single-user).
+ * In-memory cache of each email-keyed token file, keyed by the file's path (one
+ * file per multi-user namespace, one for every other mode).
  */
-let cachedTokenStore: TokenStore | null = null
+const tokenStoreCache = new Map<string, TokenStore>()
 
-/** Exposed for testing */
+/**
+ * Drop the cached token store. In multi-user mode only the caller's own file is
+ * dropped; otherwise every cached file is.
+ */
 export function _resetTokenCache(): void {
-  cachedTokenStore = null
+  if (callerNamespace() === null) {
+    tokenStoreCache.clear()
+    return
+  }
+  tokenStoreCache.delete(tokenFile())
 }
 
 /**
@@ -273,16 +284,18 @@ export function _resetTokenCache(): void {
 export async function loadStoredTokens(email: string): Promise<OAuth2Tokens | null> {
   if (!email?.trim()) throw new Error('Email is required')
   const key = email.toLowerCase()
+  const file = tokenFile()
   try {
-    if (cachedTokenStore) {
-      return cachedTokenStore[key] || null
+    const cached = tokenStoreCache.get(file)
+    if (cached) {
+      return cached[key] || null
     }
-    const data = await readFile(tokenFile(), 'utf-8')
+    const data = await readFile(file, 'utf-8')
     const store = parseTokenStore(data)
     if (!store) {
       return null
     }
-    cachedTokenStore = store
+    tokenStoreCache.set(file, store)
     return store[key] || null
   } catch {
     return null
@@ -317,14 +330,15 @@ export async function saveTokens(email: string, tokens: OAuth2Tokens): Promise<v
  * array if there was nothing to delete).
  */
 export async function deleteStoredTokens(email?: string): Promise<string[]> {
-  if (!existsSync(tokenFile())) {
-    cachedTokenStore = null
+  const file = tokenFile()
+  if (!existsSync(file)) {
+    tokenStoreCache.delete(file)
     return []
   }
 
   let store: TokenStore
   try {
-    const data = readFileSync(tokenFile(), 'utf-8')
+    const data = readFileSync(file, 'utf-8')
     store = parseTokenStore(data) ?? {}
   } catch {
     store = {}
@@ -346,8 +360,8 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
     return deleted
   }
 
-  cachedTokenStore = store
-  writeFileSync(tokenFile(), JSON.stringify(store, null, 2), { mode: 0o600 })
+  tokenStoreCache.set(file, store)
+  writeFileSync(file, JSON.stringify(store, null, 2), { mode: 0o600 })
   return deleted
 }
 
@@ -355,15 +369,17 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
  * Write the email-keyed ``tokens.json`` (0600). Synchronous; creates the config dir if needed.
  */
 function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
-  const dir = resolveDataDir()
+  const file = tokenFile()
+  const dir = dirname(file)
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true, mode: 0o700 })
   }
 
-  let store: TokenStore = cachedTokenStore || {}
+  const cached = tokenStoreCache.get(file)
+  let store: TokenStore = cached || {}
   try {
-    if (!cachedTokenStore && existsSync(tokenFile())) {
-      const data = readFileSync(tokenFile(), 'utf-8')
+    if (!cached && existsSync(file)) {
+      const data = readFileSync(file, 'utf-8')
       const parsedStore = parseTokenStore(data)
       if (parsedStore) {
         store = parsedStore
@@ -377,8 +393,8 @@ function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
   }
 
   store[emailKey] = tokens
-  cachedTokenStore = store
-  writeFileSync(tokenFile(), JSON.stringify(store, null, 2), { mode: 0o600 })
+  tokenStoreCache.set(file, store)
+  writeFileSync(file, JSON.stringify(store, null, 2), { mode: 0o600 })
 }
 
 /**
@@ -408,7 +424,8 @@ export async function refreshAccessToken(clientId: string, refreshToken: string)
 
 /**
  * Track pending Device Code auth flows so we don't request new codes on every retry.
- * Maps email → { verificationUri, userCode, expiresAt }
+ * Maps `scopedKey(email)` → { verificationUri, userCode, expiresAt }: a multi-user
+ * caller never sees, or completes, another caller's pending sign-in.
  */
 interface PendingAuth {
   verificationUri: string
@@ -468,7 +485,7 @@ function startBackgroundPoll(
   expiresIn: number,
   email: string
 ): void {
-  const emailKey = email.toLowerCase()
+  const emailKey = scopedKey(email.toLowerCase())
   const deadline = Date.now() + expiresIn * MS_PER_SECOND
   let pollInterval = (interval || DEFAULT_POLLING_INTERVAL_SECONDS) * MS_PER_SECOND
 
@@ -528,7 +545,7 @@ export async function initiateOutlookDeviceCode(
   email: string
 ): Promise<{ verificationUri: string; userCode: string; expiresIn: number; interval: number }> {
   if (!email?.trim()) throw new Error('Email is required')
-  const emailKey = email.toLowerCase()
+  const emailKey = scopedKey(email.toLowerCase())
   const existing = pendingAuths.get(emailKey)
   if (existing && existing.expiresAt > Date.now()) {
     return {
@@ -603,7 +620,7 @@ export async function ensureValidToken(
       throw new OAuth2AuthError('OAUTH_AUTH_REQUIRED', 'OAuth authentication required for this account.')
     }
 
-    const emailKey = account.email.toLowerCase()
+    const emailKey = scopedKey(account.email.toLowerCase())
 
     const pending = pendingAuths.get(emailKey)
 

@@ -127,6 +127,16 @@ export function textToHtml(text: string): string {
   return sanitizeHtml(rawHtml, EMAIL_SANITIZE_OPTIONS)
 }
 
+/** Subject of a reply: `Re: ` added once, never stacked on an existing `Re:`. */
+export function replySubject(subject: string): string {
+  return subject.startsWith('Re:') ? subject : `Re: ${subject}`
+}
+
+/** Subject of a forward: `Fwd: ` added once, never stacked on an existing `Fwd:`. */
+export function forwardSubject(subject: string): string {
+  return subject.startsWith('Fwd:') ? subject : `Fwd: ${subject}`
+}
+
 /**
  * Build a raw RFC2822 message using Nodemailer's MailComposer.
  * Returns the exact bytes that can be sent via SMTP and/or appended to IMAP.
@@ -202,7 +212,9 @@ async function sendRawMessage(
   const transport = createSmtpTransport(account)
   try {
     const result = await transport.sendMail({ raw, envelope })
-    return { messageId: result.messageId || '' }
+    // Nodemailer does not parse a raw message, so `result.messageId` is a fresh
+    // id it made up, not the Message-ID header recipients see and reply to.
+    return { messageId: messageIdOf(raw) || result.messageId || '' }
   } finally {
     transport.close()
   }
@@ -261,7 +273,7 @@ export async function replyToEmail(
   validateAttachments(options.attachments)
   const attachments = mapAttachments(options.attachments)
 
-  const subject = options.subject.startsWith('Re:') ? options.subject : `Re: ${options.subject}`
+  const subject = replySubject(options.subject)
 
   const mailOptions = {
     from: options.from || account.email,
@@ -299,7 +311,7 @@ export async function forwardEmail(
   validateAttachments(options.attachments)
   const attachments = mapAttachments(options.attachments)
 
-  const subject = options.subject.startsWith('Fwd:') ? options.subject : `Fwd: ${options.subject}`
+  const subject = forwardSubject(options.subject)
   const body = `${options.body}\n\n---------- Forwarded message ----------\n${options.original_body}`
 
   const mailOptions = {

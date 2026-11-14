@@ -48,7 +48,8 @@ src/
   auth/                          # Outlook device-code OAuth (`email auth outlook <address>`)
     outlook-device-code.ts       # Microsoft device-code OAuth flow
   transports/
-    http.ts                      # Single-user HTTP transport: hull runHttpServer + bearer token hash (EMAIL_MCP_TOKEN_HASH)
+    http.ts                      # HTTP transport: hull runHttpServer, auth mode multi (users.toml, per-namespace accounts) / token (MCP_AUTH_TOKEN_HASH) / no-auth (loopback)
+  tenant.ts                      # Caller namespace for HTTP multi mode: per-user data dir + namespaced cache keys
   docs/                          # Markdown docs phuc vu qua MCP resources
   tools/
     registry.ts                  # Tool registration + routing
@@ -63,7 +64,10 @@ src/
   - Custom IMAP host: `user@custom.com:password:imap.custom.com`
   - Custom IMAP host + port: `user@custom.com:password:imap.custom.com:1993`
   - Local IMAP proxy: `user@custom.com:password:localhost:1993` (`localhost` accepted as host; per-account port)
-- **http mode** (opt-in via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`): bearer token from `EMAIL_MCP_TOKEN_HASH` (scrypt hash; mint with `printf '%s' "$TOKEN" | email token hash`, token read from stdin, never argv). Required when bound to a non-loopback host; `{mode:'no-auth'}` only on loopback. Self-host qua `docker-compose.http.yml` (volume `/data`, publish loopback `127.0.0.1:8082`). Creds: `EMAIL_CREDENTIALS` env; Outlook tokens `~/.email/tokens.json`.
+- **http mode** (opt-in via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`): `MCP_AUTH_MODE` = `multi` | `token` | `no-auth` (`transports/http.ts:resolveHttpAuth`).
+  - `multi`: hull `users.toml` (`MCP_USERS_FILE`, default `~/.hull/users.toml`). Moi caller chi thay `~/.email/users/<namespace>/accounts.toml` + `tokens.json` cua minh; accounts server-wide KHONG BAO GIO duoc phuc vu. Provision host-side: `email auth outlook <address> --user <namespace>`.
+  - `token`: `MCP_AUTH_TOKEN_HASH` (ten cu `EMAIL_MCP_TOKEN_HASH` van doc; scrypt hash; mint with `printf '%s' "$TOKEN" | email token hash`, token read from stdin, never argv), `MCP_RPM` tuy chon. Creds: `EMAIL_CREDENTIALS` env; Outlook tokens `~/.email/tokens.json`.
+  - Khong mode + khong hash: `no-auth` chi tren loopback; bind non-loopback thi tu choi start. Self-host qua `docker-compose.http.yml` (volume `/data`, publish loopback `127.0.0.1:8082`).
 - `PORT` (default `0` = OS-assigned random port), `HOST` (optional bind address)
 - `OUTLOOK_CLIENT_ID` -- tu chon, cho self-hosted OAuth2 client. CLI `auth --client-id=<id>` override env var (flag thang env, xem `auth-cli.ts:parseArgs`)
 - `OUTLOOK_TENANT` -- tu chon, tenant cho CA device-code LAN token refresh (`oauth2.ts:getOutlookTenant`). Default `consumers` (stdio/CLI) va `common` (http delegated, `auth/outlook-device-code.ts`). Work/school (Entra ID) can `common` hoac tenant GUID -- refresh token cua work/school danh vao `/consumers` se loi `AADSTS7000012`
@@ -99,7 +103,7 @@ PSR v10 (workflow_dispatch) -> npm + Docker (amd64+arm64) + GHCR + MCP Registry.
 Two transports, selected in `init-server.ts:52-53`. There is no `MCP_MODE` env var; the old `remote-relay` / `local-relay` distinction was removed (see `transports/http.ts:5`).
 
 - **stdio (default)**: MCP SDK `StdioServerTransport` directly. Reads credentials from `EMAIL_CREDENTIALS` OR `EMAIL_USER` + `EMAIL_APP_PASSWORD`. Outlook accounts use an App Password in this mode.
-- **http (opt-in, self-hosted)**: enabled via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`. Single user: one shared bearer token (`EMAIL_MCP_TOKEN_HASH`, hull `runHttpServer` auth mode `token`). Accounts come from `EMAIL_CREDENTIALS` or `email auth outlook <address>`; there is no relay form and no per-user store. The project no longer operates a public n24q02m HTTP deployment.
+- **http (opt-in, self-hosted)**: enabled via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`. Auth mode `token`: one shared bearer token (`MCP_AUTH_TOKEN_HASH` / `EMAIL_MCP_TOKEN_HASH`), accounts from `EMAIL_CREDENTIALS` or `email auth outlook <address>`. Auth mode `multi`: several users from hull `users.toml`, accounts resolved per tool call for the caller's namespace (`registerTools(server, [], { resolveAccounts: loadCallerConfig })`). There is no relay form. The project no longer operates a public n24q02m HTTP deployment.
 
 ## Known bugs (phat hien 2026-04-18 E2E)
 

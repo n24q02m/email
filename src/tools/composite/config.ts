@@ -12,14 +12,21 @@
  * Credentials are supplied through env vars (EMAIL_CREDENTIALS, or
  * EMAIL_USER + EMAIL_APP_PASSWORD) or the `email auth` CLI. This tool does not
  * open a browser form.
+ *
+ * HTTP multi-user mode: the state reported is the caller's own (configured when
+ * its namespace has a mailbox), and the server-wide lifecycle actions
+ * (`setup_reset`, `setup_complete`) are refused, because a caller must never
+ * reset or reload the operator's or another caller's credentials. Accounts are
+ * provisioned host-side per namespace.
  */
 
 import type { CredentialState } from '../../credential-state.js'
 import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
+import { callerNamespace } from '../../tenant.js'
 import type { AccountConfig, AccountMode } from '../helpers/config.js'
 import { accountMode, enabledAccounts, isAccountEnabled } from '../helpers/config.js'
 import { refuseInDraftOnly } from '../helpers/draft-only.js'
-import { createUnknownActionError, withErrorHandling } from '../helpers/errors.js'
+import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
 import { clearDraftsFolderCache, clearSentFolderCache } from '../helpers/imap-client.js'
 import { _resetTokenCache } from '../helpers/oauth2.js'
 import { clearArchiveFolderCache } from './messages.js'
@@ -93,6 +100,8 @@ type ConfigResult =
 export async function handleConfig(accounts: AccountConfig[], input: ConfigInput): Promise<ConfigResult> {
   return withErrorHandling(async () => {
     refuseInDraftOnly('config', input.action)
+    const namespace = callerNamespace()
+    if (namespace !== null) return handleNamespaceConfig(namespace, accounts, input)
     switch (input.action) {
       case 'status':
         return handleStatus(accounts)
@@ -122,6 +131,49 @@ export async function handleConfig(accounts: AccountConfig[], input: ConfigInput
         )
     }
   })()
+}
+
+/** `config` for an HTTP multi-user caller: scoped to the caller's namespace. */
+function handleNamespaceConfig(namespace: string, accounts: AccountConfig[], input: ConfigInput): ConfigResult {
+  const state: CredentialState = accounts.length > 0 ? 'configured' : 'awaiting_setup'
+  switch (input.action) {
+    case 'status':
+      return { ...handleStatus(accounts), state }
+
+    case 'setup_status':
+      return { action: 'setup_status', state }
+
+    case 'setup_start':
+      return {
+        action: 'setup_start',
+        state,
+        message:
+          `Accounts for user namespace "${namespace}" are provisioned by the server operator: ` +
+          `users/${namespace}/accounts.toml under the server's email data directory, ` +
+          `or \`email auth outlook <address> --user ${namespace}\` for an Outlook address. ` +
+          'Changes apply on the next tool call.'
+      }
+
+    case 'setup_reset':
+    case 'setup_complete':
+      throw new EmailMCPError(
+        `config ${input.action} is not available to a multi-user caller`,
+        'MULTI_USER_HOST_SIDE',
+        'Accounts are managed per user namespace by the server operator; use action "status" to see your accounts.'
+      )
+
+    case 'set':
+      return handleSet()
+
+    case 'cache_clear':
+      return handleCacheClear()
+
+    default:
+      throw createUnknownActionError(
+        input.action,
+        'status, setup_status, setup_start, setup_reset, setup_complete, set, cache_clear'
+      )
+  }
 }
 
 function handleStatus(accounts: AccountConfig[]): ConfigStatusResult {
