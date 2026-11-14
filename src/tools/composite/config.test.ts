@@ -70,6 +70,19 @@ describe('config - status', () => {
     })
   })
 
+  it('lists sender aliases per enabled account', async () => {
+    mockGetState.mockReturnValue('configured')
+    const withAliases: AccountConfig[] = [
+      { ...accounts[0]!, aliases: ['team@example.com'] },
+      accounts[1]!,
+      { ...accounts[1]!, id: 'off', email: 'off@example.com', enabled: false, aliases: ['x@example.com'] }
+    ]
+
+    const result = await handleConfig(withAliases, { action: 'status' })
+
+    expect(result).toMatchObject({ aliases: { 'user1@gmail.com': ['team@example.com'] } })
+  })
+
   it('returns empty accounts when none configured', async () => {
     mockGetState.mockReturnValue('awaiting_setup')
 

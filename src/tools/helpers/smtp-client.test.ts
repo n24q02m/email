@@ -508,6 +508,55 @@ describe('composing without delivery', () => {
   })
 })
 
+// ============================================================================
+// from (sender aliases)
+// ============================================================================
+
+describe('from header and envelope sender', () => {
+  it('defaults both to the account address', async () => {
+    await sendNewEmail(account, { to: 'r@test.com', subject: 'S', body: 'B' })
+
+    expect((MockMailComposer as any).mock.calls[0]![0].from).toBe('test@gmail.com')
+    expect(mockSendMail.mock.calls[0]![0].envelope.from).toBe('test@gmail.com')
+  })
+
+  it('uses a bare alias for the header and the envelope', async () => {
+    await sendNewEmail(account, { from: 'hello@example.com', to: 'r@test.com', subject: 'S', body: 'B' })
+
+    expect((MockMailComposer as any).mock.calls[0]![0].from).toBe('hello@example.com')
+    expect(mockSendMail.mock.calls[0]![0].envelope).toEqual({ from: 'hello@example.com', to: ['r@test.com'] })
+  })
+
+  it('keeps a display name in the header and strips it from the envelope', async () => {
+    await replyToEmail(account, {
+      from: '"Support" <support@example.com>',
+      to: 'r@test.com',
+      subject: 'S',
+      body: 'B',
+      in_reply_to: '<orig@test>'
+    })
+
+    expect((MockMailComposer as any).mock.calls[0]![0].from).toBe('"Support" <support@example.com>')
+    expect(mockSendMail.mock.calls[0]![0].envelope.from).toBe('support@example.com')
+  })
+
+  it('applies to forwards and leaves the login unchanged', async () => {
+    await forwardEmail(account, {
+      from: 'hello@example.com',
+      to: 'r@test.com',
+      subject: 'S',
+      body: 'B',
+      original_body: 'O'
+    })
+
+    expect((MockMailComposer as any).mock.calls[0]![0].from).toBe('hello@example.com')
+    expect(mockSendMail.mock.calls[0]![0].envelope.from).toBe('hello@example.com')
+    expect(vi.mocked(createTransport).mock.calls.at(-1)![0]).toMatchObject({
+      auth: { user: 'test@gmail.com', pass: 'testpass' }
+    })
+  })
+})
+
 describe('message_id of a sent message', () => {
   it('reports the Message-ID header that was sent, not the transport id', async () => {
     mockBuild.mockResolvedValueOnce(Buffer.from('Message-ID: <header@example.com>\r\nSubject: Hi\r\n\r\nBody'))

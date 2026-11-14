@@ -406,6 +406,7 @@ imap_port = 993                   # optional, default 993 with a custom host
 smtp_host = "smtp.company.com"    # optional, default: guessed from imap_host
 smtp_port = 587                   # optional
 smtp_security = "starttls"        # optional: tls | ssl | starttls | none
+aliases = ["team@company.com"]    # optional; other addresses this mailbox may send as
 enabled = true                    # optional; false keeps the row but skips it
 ```
 
@@ -424,6 +425,34 @@ errors that name the file (and the offending account id).
 Precedence, highest first: accounts file → `EMAIL_CREDENTIALS` →
 `EMAIL_USER` + `EMAIL_APP_PASSWORD` → legacy encrypted `config.enc` → saved
 Outlook tokens.
+
+### Sender aliases
+
+Many mailboxes receive mail for more than one address: iCloud+ custom email
+domains, Gmail "Send mail as" addresses, Fastmail or Zoho aliases. List them as
+`aliases` on the account, and `messages` `new`/`reply`/`forward` can send as any
+of them with `from`:
+
+```toml
+[accounts.icloud]
+email = "me@icloud.com"
+password = "app-specific-password"
+aliases = ["hello@example.com", "support@example.com"]
+```
+
+```json
+{"action": "new", "from": "Support <support@example.com>", "to": "a@example.org", "subject": "Hi", "body": "..."}
+```
+
+- The login stays `email`; an alias changes only the From header and the SMTP
+  envelope sender, so the provider must allow sending as that address.
+- `from` alone picks the account that owns the address, so multi-account setups
+  do not need `account` as well.
+- A reply without `from` answers from the alias the original was addressed to.
+- Any other `from` is rejected with `SENDER_NOT_ALLOWED`; an alias belongs to one
+  account only.
+- Mail sent to an alias already lands in the account's mailbox, so search and
+  read need nothing extra (`TO hello@example.com` narrows a search).
 
 ### Multiple Accounts
 

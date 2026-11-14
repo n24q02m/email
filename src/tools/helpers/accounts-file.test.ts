@@ -171,6 +171,70 @@ describe('parseAccountsFile', () => {
     )
   })
 
+  it('parses aliases, dropping repeats and the account address', () => {
+    const [entry] = parseAccountsFile(
+      '[accounts.icloud]\nemail = "me@icloud.com"\npassword = "p"\naliases = ["hello@example.com", " Support@example.com ", "HELLO@example.com", "me@icloud.com"]\n',
+      '/x/accounts.toml'
+    )
+    expect(entry!.aliases).toEqual(['hello@example.com', 'Support@example.com'])
+  })
+
+  it('omits aliases when the list is empty or absent', () => {
+    const [withEmpty, without] = parseAccountsFile(
+      '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\naliases = []\n\n[accounts.b]\nemail = "b@gmail.com"\npassword = "p"\n',
+      '/x/accounts.toml'
+    )
+    expect(withEmpty).not.toHaveProperty('aliases')
+    expect(without).not.toHaveProperty('aliases')
+  })
+
+  it('rejects aliases that are not a list of addresses', () => {
+    expectInvalid(
+      () =>
+        parseAccountsFile(
+          '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\naliases = "x@example.com"\n',
+          '/x/a.toml'
+        ),
+      'accounts.a',
+      'aliases must be a list'
+    )
+    expectInvalid(
+      () =>
+        parseAccountsFile(
+          '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\naliases = ["not-an-address"]\n',
+          '/x/a.toml'
+        ),
+      'not-an-address',
+      'is not an address'
+    )
+    expectInvalid(
+      () => parseAccountsFile('[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\naliases = [42]\n', '/x/a.toml'),
+      'is not an address'
+    )
+  })
+
+  it('rejects an alias owned by another account', () => {
+    expectInvalid(
+      () =>
+        parseAccountsFile(
+          '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\naliases = ["team@example.com"]\n\n[accounts.b]\nemail = "b@gmail.com"\npassword = "p"\naliases = ["Team@example.com"]\n',
+          '/x/a.toml'
+        ),
+      'accounts.b',
+      'accounts.a'
+    )
+    // An alias that is another row's own address, even when that row comes later.
+    expectInvalid(
+      () =>
+        parseAccountsFile(
+          '[accounts.a]\nemail = "a@gmail.com"\npassword = "p"\naliases = ["b@gmail.com"]\n\n[accounts.b]\nemail = "b@gmail.com"\npassword = "p"\n',
+          '/x/a.toml'
+        ),
+      'b@gmail.com',
+      'accounts.b'
+    )
+  })
+
   it('rejects a row that is not a table', () => {
     expectInvalid(() => parseAccountsFile('[accounts]\na = "x"\n', '/tmp/a.toml'), 'accounts.a must be a table')
   })
@@ -321,6 +385,19 @@ describe('loadConfig with an accounts file', () => {
     const accounts = await loadConfig()
 
     expect(accounts.map((account) => account.email)).toEqual(['env@gmail.com', 'second@outlook.com'])
+  })
+
+  it('carries aliases through to the account', async () => {
+    await writeFile(
+      join(dir, 'accounts.toml'),
+      '[accounts.icloud]\nemail = "me@icloud.com"\npassword = "p"\naliases = ["hello@example.com"]\n',
+      'utf8'
+    )
+
+    const [account] = await loadConfig()
+
+    expect(account).toMatchObject({ id: 'icloud', email: 'me@icloud.com', aliases: ['hello@example.com'] })
+    expect(account!.smtp.host).toBe('smtp.mail.me.com')
   })
 
   it('carries enabled = false through to the account', async () => {

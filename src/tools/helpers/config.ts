@@ -27,6 +27,8 @@ export interface AccountConfig {
   oauth2?: OAuth2Tokens
   /** `false` only for an accounts-file row that says `enabled = false`. */
   enabled?: boolean
+  /** Other addresses this mailbox may send as; the login stays `email`. */
+  aliases?: string[]
 }
 
 /** Well-known email provider settings */
@@ -377,6 +379,8 @@ export interface AccountFields {
   smtpHost?: string
   smtpPort?: number
   smtpSecurity?: SmtpSecurity
+  /** Other addresses the account may send as (accounts-file `aliases`). */
+  aliases?: string[]
 }
 
 /**
@@ -409,7 +413,8 @@ export async function buildAccount(fields: AccountFields): Promise<AccountConfig
     authType: 'password',
     imap: servers.imap,
     smtp: servers.smtp,
-    ...(fields.enabled === false ? { enabled: false } : {})
+    ...(fields.enabled === false ? { enabled: false } : {}),
+    ...(fields.aliases?.length ? { aliases: [...fields.aliases] } : {})
   }
 
   // Outlook domains use OAuth2 by default. An explicit custom IMAP host means

@@ -44,6 +44,8 @@ interface ConfigStatusResult {
   mode: AccountMode
   accounts: string[]
   disabled_accounts?: string[]
+  /** Sender aliases per enabled account email, when any account has them. */
+  aliases?: Record<string, string[]>
 }
 
 interface ConfigSetupStatusResult {
@@ -178,12 +180,14 @@ function handleStatus(accounts: AccountConfig[]): ConfigStatusResult {
   // Report the accounts a tool call may actually use; a row with
   // `enabled = false` is listed separately so the file and the report agree.
   const disabled = accounts.filter((account) => !isAccountEnabled(account))
+  const withAliases = enabledAccounts(accounts).filter((a) => a.aliases?.length)
   return {
     action: 'status',
     state: getState(),
     mode: accountMode(accounts),
     accounts: enabledAccounts(accounts).map((a) => a.email),
-    ...(disabled.length > 0 ? { disabled_accounts: disabled.map((a) => a.email) } : {})
+    ...(disabled.length > 0 ? { disabled_accounts: disabled.map((a) => a.email) } : {}),
+    ...(withAliases.length > 0 ? { aliases: Object.fromEntries(withAliases.map((a) => [a.email, a.aliases!])) } : {})
   }
 }
 

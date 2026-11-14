@@ -17,6 +17,8 @@ export interface EmailAttachment {
 }
 
 export interface SendEmailOptions {
+  /** From header (an address or "Name <address>"); defaults to the account address. */
+  from?: string
   to: string
   subject: string
   body: string
@@ -164,6 +166,16 @@ function messageIdOf(raw: Buffer): string {
 }
 
 /**
+ * MAIL FROM for the SMTP envelope: the bare address of the From header, so a
+ * message sent as an alias also bounces to that alias (providers that allow
+ * the alias accept it as the envelope sender too).
+ */
+function envelopeSender(account: AccountConfig, from: string | undefined): string {
+  if (!from) return account.email
+  return /<([^<>]+)>\s*$/.exec(from)?.[1]?.trim() || from.trim()
+}
+
+/**
  * Collect all recipient addresses for the SMTP envelope.
  * When sending raw messages, Nodemailer doesn't parse headers —
  * the envelope must be provided separately with all RCPT TO addresses.
@@ -220,7 +232,7 @@ export async function sendNewEmail(
   const attachments = mapAttachments(options.attachments)
 
   const mailOptions = {
-    from: account.email,
+    from: options.from || account.email,
     to: options.to,
     cc: options.cc,
     bcc: options.bcc,
@@ -233,7 +245,7 @@ export async function sendNewEmail(
   const raw = await buildRawMessage(mailOptions)
   const recipients = collectRecipients(options.to, options.cc, options.bcc)
   if (!deliver) return { success: true, message_id: messageIdOf(raw), raw }
-  const result = await sendRawMessage(account, raw, { from: account.email, to: recipients })
+  const result = await sendRawMessage(account, raw, { from: envelopeSender(account, options.from), to: recipients })
 
   return {
     success: true,
@@ -264,7 +276,7 @@ export async function replyToEmail(
   const subject = replySubject(options.subject)
 
   const mailOptions = {
-    from: account.email,
+    from: options.from || account.email,
     to: options.to,
     cc: options.cc,
     bcc: options.bcc,
@@ -279,7 +291,7 @@ export async function replyToEmail(
   const raw = await buildRawMessage(mailOptions)
   const recipients = collectRecipients(options.to, options.cc, options.bcc)
   if (!deliver) return { success: true, message_id: messageIdOf(raw), raw }
-  const result = await sendRawMessage(account, raw, { from: account.email, to: recipients })
+  const result = await sendRawMessage(account, raw, { from: envelopeSender(account, options.from), to: recipients })
 
   return {
     success: true,
@@ -303,7 +315,7 @@ export async function forwardEmail(
   const body = `${options.body}\n\n---------- Forwarded message ----------\n${options.original_body}`
 
   const mailOptions = {
-    from: account.email,
+    from: options.from || account.email,
     to: options.to,
     cc: options.cc,
     bcc: options.bcc,
@@ -316,7 +328,7 @@ export async function forwardEmail(
   const raw = await buildRawMessage(mailOptions)
   const recipients = collectRecipients(options.to, options.cc, options.bcc)
   if (!deliver) return { success: true, message_id: messageIdOf(raw), raw }
-  const result = await sendRawMessage(account, raw, { from: account.email, to: recipients })
+  const result = await sendRawMessage(account, raw, { from: envelopeSender(account, options.from), to: recipients })
 
   return {
     success: true,
