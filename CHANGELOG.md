@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.44.0-beta.3 (2026-11-14)
+
+### Bug Fixes
+
+- Point the handover version line at its source instead of a stale number
+  ([#1260](https://github.com/n24q02m/email/pull/1260),
+  [`62ed7c2`](https://github.com/n24q02m/email/commit/62ed7c296a8b3bc26a0ec22af9c4c743337f0ffc))
+
+
 ## v1.44.0-beta.2 (2026-11-14)
 
 ### Features
