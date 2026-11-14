@@ -8,7 +8,7 @@
 
 The server runs on the MCP TypeScript SDK with hull (`@n24q02m/hull`) supplying the HTTP transport, bearer-token auth, the shared operator CLI, and the encrypted config store. Mail access is plain IMAP/SMTP through `imapflow` with `mailparser` in `src/tools/helpers/`, with provider settings auto-discovered from the address and a per-account override for custom hosts. There is no OAuth server, relay form, daemon proxy, or hosted endpoint; the one bundled OAuth flow is the Outlook/Hotmail/Live device-code sign-in described below.
 
-Two transports: local stdio (default) and Streamable HTTP as a single-user server behind one shared bearer token.
+Two transports: local stdio (default) and Streamable HTTP. HTTP serves either one principal behind a shared bearer token, or several users from hull's `users.toml` token table, each confined to its own mailboxes and Outlook grants (`MCP_AUTH_MODE=multi`).
 
 The public contract is defined by the repository README, `server.json`, package metadata, and the documented MCP tools and resources.
 
@@ -21,20 +21,20 @@ Three domain tools plus `config` and `help` (`src/tools/registry.ts` is the sing
 | `messages` | `search`, `read`, `mark_read`, `mark_unread`, `flag`, `unflag`, `move`, `archive`, `trash`, `new`, `reply`, `forward` | Sending is `new`/`reply`/`forward` inside this domain; there is no separate `send` tool and no alias for the removed one. |
 | `folders` | `list`, `status` | `status` reads IMAP STATUS for exactly one mailbox and returns `messages`, `unseen`, `uid_next`. |
 | `attachments` | `list`, `download` | Filenames are case-sensitive; `download` returns base64 content, capped at 25 MB per provider. |
-| `config` | `status`, `setup_status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | `set` returns `ok: false` (email has no runtime settings); `cache_clear` drops the IMAP sent/archive folder caches and the OAuth token cache. |
+| `config` | `status`, `setup_status`, `setup_start`, `setup_reset`, `setup_complete`, `set`, `cache_clear` | `set` returns `ok: false` (email has no runtime settings); `cache_clear` drops the IMAP sent/drafts/archive folder caches and the OAuth token cache. For an HTTP multi-user caller `status` reports that caller's accounts only, `cache_clear` drops only that caller's entries, and `setup_reset` / `setup_complete` are refused (`MULTI_USER_HOST_SIDE`): accounts are provisioned host-side. |
 | `help` | one tool at a time via `tool_name` | Returns the Markdown topic from `src/docs/`. |
 
 Bounds that matter operationally: `search` defaults to `limit` 20 and treats plain text as a subject search; `read` returns a bounded preview (4000 characters by default, `max_chars` 1-100000, `full`/`preview: false` for the whole body) with an explicit truncation marker and `body_truncated` / `body_char_count` fields; outbound attachments are capped at 10 files and 25 MB decoded total.
 
 MCP resources are the per-tool documentation in `src/docs/`: `email://docs/{messages,folders,attachments,config,help}`.
 
-`registerTools(server, accounts)` keeps one mutable account list per process, resolved from the environment at startup. A call made while that list is empty and the credential state is `configured` reloads it once (which is how credentials saved after startup are picked up). Tokens saved by `email auth` are re-read per call, but a mailbox added to `EMAIL_CREDENTIALS` after startup needs a restart.
+`registerTools(server, accounts)` keeps one mutable account list per process, resolved from the environment at startup. A call made while that list is empty and the credential state is `configured` reloads it once (which is how credentials saved after startup are picked up). Tokens saved by `email auth` are re-read per call, but a mailbox added to `EMAIL_CREDENTIALS` after startup needs a restart. In HTTP multi-user mode `registerTools(server, [], { resolveAccounts })` instead resolves the caller's accounts on every tool call (`loadCallerConfig` in `src/tools/helpers/config.ts`), so an edited per-user `accounts.toml` applies on the next call.
 
 ### CLI surface
 
 `email <tool> <action> [--flag <value>]... [--json]` runs the same handler the MCP tool runs. Flags are derived from the tool's own JSON Schema, so the CLI cannot accept an argument the tool does not take; output is the tool's exact envelope with `--json`, readable text otherwise, one stderr line and exit 1 on failure. `config-tool` is the CLI name of the `config` MCP tool, because the bare `email config` command is the operator command for the stored credential file.
 
-Operator commands come from hull's `buildCli` plus this repository's two: `auth`, `logout`, `config status` / `config delete --yes`, `status`, `doctor`, `token hash`. `email --help` lists tool subcommands and operator commands as separate groups.
+Operator commands come from hull's `buildCli` plus this repository's two: `auth`, `logout`, `config status` / `config delete --yes`, `status`, `doctor`, `token hash`. `auth` and `logout` take `--user <namespace>` to write or clear the Outlook grant of one HTTP multi-user namespace instead of the server-wide one. `email --help` lists tool subcommands and operator commands as separate groups.
 
 ## Build and verify
 
@@ -61,7 +61,11 @@ Smoke without a mailbox: `email config-tool status --json` and `email help messa
 | `TRANSPORT_MODE` / `MCP_TRANSPORT` | no | set to `http` for the HTTP transport (or pass `--http`) |
 | `HOST` | no (HTTP) | bind address, `0.0.0.0` by default |
 | `PORT` / `MCP_PORT` | no (HTTP) | listen port; `PORT` wins, then `MCP_PORT`, then `0` (OS-assigned) |
-| `EMAIL_MCP_TOKEN_HASH` | HTTP off loopback | `scrypt$` hash of the shared bearer token, minted with `email token hash` |
+| `MCP_AUTH_MODE` | no (HTTP) | `multi`, `token` or `no-auth`; unset keeps the older rule (a hash selects `token`, else loopback runs `no-auth` and any other bind refuses to start) |
+| `MCP_USERS_FILE` | no (HTTP `multi`) | hull `users.toml` token table; default `~/.hull/users.toml` |
+| `MCP_AUTH_TOKEN_HASH` | HTTP `token` mode | `scrypt$` hash of the shared bearer token, minted with `email token hash` |
+| `EMAIL_MCP_TOKEN_HASH` | no | older name of `MCP_AUTH_TOKEN_HASH`, still honoured (`MCP_AUTH_TOKEN_HASH` wins when both are set) |
+| `MCP_RPM` | no (HTTP `token`) | per-minute request cap for the shared token; in `multi` mode set `[users.<id>.limits] rpm` per user instead |
 | `OUTLOOK_CLIENT_ID` | no | overrides the bundled public Azure client (or `--client-id` on `auth`) |
 | `OUTLOOK_TENANT` | no | Microsoft directory for both the device-code and refresh calls; `common` for work/school mailboxes |
 | `OUTLOOK_SCOPES` | no | space-separated scopes; narrow it for a read-only deployment |
@@ -70,26 +74,30 @@ Smoke without a mailbox: `email config-tool status --json` and `email help messa
 
 Credential resolution at startup, in order: `EMAIL_CREDENTIALS`; the `EMAIL_USER`/`EMAIL_APP_PASSWORD` pair; the encrypted `config.enc` left by an earlier install (read-only, through hull's store under the fixed key `better-email-mcp`); saved Outlook OAuth tokens; otherwise `awaiting_setup`. Multiple accounts are comma-separated in one `EMAIL_CREDENTIALS` value, and a tool call selects one with the `account` parameter -- an ambiguous or unknown account is an error with the configured addresses listed, never a silent fallback to the first account.
 
-Outlook/Hotmail/Live accounts use the OAuth2 device-code flow: `email auth [outlook] <address>` prints a code and a Microsoft URL, then saves tokens to `<base>/.better-email-mcp/tokens.json` (mode 0600 on POSIX). `email logout [<address>]` clears one or all of them. Every other provider uses an app password in `EMAIL_CREDENTIALS`.
+Outlook/Hotmail/Live accounts use the OAuth2 device-code flow: `email auth [outlook] <address>` prints a code and a Microsoft URL, then saves tokens to `<base>/.email/tokens.json` (mode 0600 on POSIX); with `--user <namespace>` they go to `<base>/.email/users/<namespace>/tokens.json`. `email logout [<address>]` clears one or all of them. Every other provider uses an app password in `EMAIL_CREDENTIALS`.
 
-`EMAIL_DATA_DIR` replaces the base directory outright, which is how a container mounts one volume (`EMAIL_DATA_DIR=/data` puts tokens at `/data/.better-email-mcp/tokens.json`; the image also sets `HOME=/data`). A relative value is resolved under the home directory and must stay inside it; an absolute value is an explicit operator choice and is taken as-is; empty means "use the default". The directory keeps its pre-rename name so tokens written by earlier releases stay readable.
+`EMAIL_DATA_DIR` replaces the base directory outright, which is how a container mounts one volume (`EMAIL_DATA_DIR=/data` puts tokens at `/data/.email/tokens.json`; the image also sets `HOME=/data`). A relative value is resolved under the home directory and must stay inside it; an absolute value is an explicit operator choice and is taken as-is; empty means "use the default". Files written by earlier releases under the pre-rename `.better-email-mcp` directory are copied forward at startup (`src/data-dir-migration.ts`).
 
 Never commit app passwords, bearer tokens, hashes, `tokens.json`, or mailbox transcripts. Do not use an external service as the source of truth for local development or verification.
 
 ## Transports and auth modes
 
 - **stdio** (default): one process, one credential set from the environment (or the stored config/tokens), no listener. Most providers need nothing beyond an app password.
-- **HTTP**: a single-user server. One shared bearer token, supplied only as its scrypt hash in `EMAIL_MCP_TOKEN_HASH`; clients send `Authorization: Bearer <token>`. With no hash the server serves unauthenticated on loopback bind only and refuses to start on any other bind address, so a container that binds `0.0.0.0` cannot come up without a token.
-- Accounts are resolved once at startup from the same environment as stdio. HTTP adds authentication, not per-caller credential namespaces; whoever can reach the endpoint can act on every configured mailbox.
+- **HTTP, `MCP_AUTH_MODE=multi`**: several users on one endpoint. hull reads the `users.toml` token table (`MCP_USERS_FILE`): each `[users.<id>]` row holds a `token_hash`, a `namespace`, `enabled`, and an optional `[users.<id>.limits] rpm`. A request with no token or an unknown one is answered `401` (`WWW-Authenticate: Bearer`) before any tool runs; a disabled user gets `403`, a user over its rate `429`. Every tool call resolves the caller's own mailboxes from `<base>/.email/users/<namespace>/accounts.toml` (same schema as `EMAIL_ACCOUNTS_FILE`) plus the Outlook grants in `<base>/.email/users/<namespace>/tokens.json`. The server-wide sources (`EMAIL_ACCOUNTS_FILE`, `EMAIL_CREDENTIALS`, `EMAIL_USER`, the legacy `config.enc`) are never served in this mode; the server warns at startup when an accounts file or the credential env vars are set. Account ids only need to be unique inside one namespace; folder and token caches are keyed per namespace. A namespace is one path segment (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`); anything else is refused.
+- **HTTP, `MCP_AUTH_MODE=token`** (or unset with a hash): one principal. One shared bearer token, supplied only as its scrypt hash in `MCP_AUTH_TOKEN_HASH` (or `EMAIL_MCP_TOKEN_HASH`); clients send `Authorization: Bearer <token>`. Accounts are resolved once at startup from the same environment as stdio; whoever holds the token can act on every configured mailbox.
+- **HTTP, no auth**: only on a loopback bind. With no mode and no hash the server refuses to start on any other bind address, so a container that binds `0.0.0.0` cannot come up without a token or a users file.
+
+Provisioning a multi-user caller is host-side: mint a token, store its hash (`email token hash`) in the user's `users.toml` row, then write `users/<namespace>/accounts.toml` under the data directory or run `email auth outlook <address> --user <namespace>`. The `config` tool cannot add, reset or complete a caller's credentials.
 
 `docker-compose.http.yml` publishes the HTTP image on host loopback only; exposing it beyond the host is the operator's own TLS reverse proxy. Startup success is the listener plus a successful tool call, not the banner on stderr.
 
 ## Data and state
 
-- Saved OAuth tokens: `<base>/.better-email-mcp/tokens.json` (`EMAIL_DATA_DIR` when set, else the home directory).
+- Saved OAuth tokens: `<base>/.email/tokens.json` (`EMAIL_DATA_DIR` when set, else the home directory); per HTTP multi-user namespace `<base>/.email/users/<namespace>/tokens.json`.
+- Per-namespace mailboxes (HTTP multi-user): `<base>/.email/users/<namespace>/accounts.toml`, re-read on every tool call.
 - Legacy encrypted config from earlier releases: read through hull's store under the fixed namespace `better-email-mcp`; the `config` tool's `setup_reset` clears it and resets the state to `awaiting_setup`.
 - The operator `email config status` / `email config delete --yes` command reads and removes the per-plugin credential store slug (`better-email`), which is separate from the legacy namespace above. `email doctor` reports the same store directory.
-- In-process caches only: the IMAP sent-folder and archive-folder path caches plus the OAuth token cache. `config`'s `cache_clear` drops all three and reports how many folder entries it removed; a restart drops them too. No mailbox content is persisted by the server, and IMAP state lives in the provider.
+- In-process caches only: the IMAP sent/drafts/archive folder path caches plus the OAuth token cache, keyed per namespace in multi-user mode. `config`'s `cache_clear` drops them (only the caller's own entries for a multi-user caller) and reports how many folder entries it removed; a restart drops them too. No mailbox content is persisted by the server, and IMAP state lives in the provider.
 - Every message read is fetched live over IMAP; nothing is mirrored to disk.
 
 ## Release and rollback
@@ -102,7 +110,8 @@ Rollback is forward: revert or fix the source commit and dispatch the pipeline a
 
 ## Known limits
 
-- HTTP mode is single-user: one bearer token, one credential set, no per-caller isolation. Do not offer one endpoint to mutually untrusting callers.
+- HTTP `token` and `no-auth` modes have one principal: one credential set, no per-caller isolation. Offer an endpoint to mutually untrusting callers only in `multi` mode, where each caller reaches only its own namespace.
+- Multi-user accounts are provisioned by the operator on the host; a caller cannot add or remove its own mailboxes through the `config` tool.
 - `set` is a no-op; configuration is environment-driven. A mailbox added to `EMAIL_CREDENTIALS` after startup needs a restart, while tokens saved by `email auth` are re-read per call.
 - App passwords are the supported path for most providers; Microsoft disabled basic auth for Exchange Online, so a work/school mailbox needs the OAuth flow plus `OUTLOOK_TENANT`/`OUTLOOK_EXTRA_DOMAINS`.
 - Attachment transfer is bounded (10 files, 25 MB decoded outbound; 25 MB per provider inbound) and `download` returns base64 in the tool result rather than writing to disk.
@@ -112,17 +121,18 @@ Rollback is forward: revert or fix the source commit and dispatch the pipeline a
 
 ## Week-one operator checklist
 
-1. Decide the transport (stdio or HTTP) and, for HTTP, which single principal the token represents.
+1. Decide the transport (stdio or HTTP) and, for HTTP, the auth mode: `token` for one principal, `multi` for several users with separate mailboxes.
 2. Install with the documented command, then run `bun run check` and `bun run test`.
 3. Supply credentials: `EMAIL_CREDENTIALS` (app password or custom-host form), or `email auth outlook <address>` for a Microsoft mailbox.
 4. Exercise one representative read against a test mailbox (`email messages search --query UNREAD --limit 5 --json`), then one `folders list`.
-5. For HTTP, mint the hash with `email token hash`, confirm the server refuses to start off loopback without it, and confirm a wrong token is rejected.
+5. For HTTP, mint the hash with `email token hash`, confirm the server refuses to start off loopback without auth, and confirm a missing or wrong token gets `401`. In `multi` mode also confirm that two users' `config status` each list only their own mailboxes.
 6. Review the exact CI run before merging, and the exact release run before using a beta artifact.
 
 ## Triage
 
 - stdio exits asking for credentials: neither `EMAIL_CREDENTIALS` nor the `EMAIL_USER`/`EMAIL_APP_PASSWORD` pair is set and no stored config or token was found. Set one, or run `email auth outlook <address>`.
-- HTTP exits on start: non-loopback bind without `EMAIL_MCP_TOKEN_HASH`. Mint the hash and pass the hash only.
+- HTTP exits on start: non-loopback bind with neither `MCP_AUTH_MODE=multi` nor a token hash (`MCP_AUTH_TOKEN_HASH` / `EMAIL_MCP_TOKEN_HASH`). Mint the hash and pass the hash only.
+- A multi-user caller gets "No email accounts are configured for user namespace": the namespace has no `users/<namespace>/accounts.toml` and no saved Outlook grant. Provision it host-side; the server-wide accounts are never a fallback.
 - Login failures: distinguish a wrong app password, a provider that rejects basic auth (use the OAuth flow), and a mailbox that requires a custom host/port (`email:password:imap_host:imap_port`).
 - `AADSTS7000012` on an Outlook refresh: the token was issued for a different directory. Set `OUTLOOK_TENANT` to the directory that owns the mailbox and sign in again.
 - `ACCOUNT_NOT_FOUND` / `AMBIGUOUS_ACCOUNT`: the `account` filter did not resolve to exactly one configured address; the error lists what is configured.

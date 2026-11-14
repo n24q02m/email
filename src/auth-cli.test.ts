@@ -1,4 +1,5 @@
 import { join } from 'node:path'
+import { currentUser } from '@n24q02m/hull/token-auth'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAuth, runLogout } from './auth-cli.js'
 import { resolveDataDir } from './data-dir.js'
@@ -37,7 +38,9 @@ describe('runAuth', () => {
   it('should exit with 1 and print usage if no email is provided', async () => {
     await expect(runAuth()).rejects.toThrow('process.exit called with 1')
 
-    expect(console.error).toHaveBeenCalledWith('Usage: email auth [outlook] <email> [--client-id=<id>]')
+    expect(console.error).toHaveBeenCalledWith(
+      'Usage: email auth [outlook] <email> [--client-id=<id>] [--user=<namespace>]'
+    )
     expect(console.error).toHaveBeenCalledWith('Example: email auth user@outlook.com')
     expect(console.error).toHaveBeenCalledWith('')
     expect(console.error).toHaveBeenCalledWith(
@@ -144,6 +147,46 @@ describe('runAuth', () => {
 
     expect(deviceCodeAuth).toHaveBeenCalledWith('user@outlook.com', 'my-azure-app')
   })
+
+  it.each([
+    [['--user=alice'], 'alice'],
+    [['--user', 'bob'], 'bob']
+  ])('signs in as the --user namespace (%j)', async (flag, namespace) => {
+    process.argv.push('user@outlook.com', ...flag)
+    vi.mocked(isOutlookDomain).mockReturnValue(true)
+    let seen: { mode: string; namespace: string } | null = null
+    vi.mocked(deviceCodeAuth).mockImplementation(async () => {
+      seen = { mode: currentUser().mode, namespace: currentUser().namespace }
+      return {} as any
+    })
+
+    await runAuth()
+
+    expect(deviceCodeAuth).toHaveBeenCalledWith('user@outlook.com')
+    expect(seen).toEqual({ mode: 'multi', namespace })
+  })
+
+  it('signs in as the local user without --user', async () => {
+    process.argv.push('user@outlook.com')
+    vi.mocked(isOutlookDomain).mockReturnValue(true)
+    let mode = ''
+    vi.mocked(deviceCodeAuth).mockImplementation(async () => {
+      mode = currentUser().mode
+      return {} as any
+    })
+
+    await runAuth()
+    expect(mode).toBe('no-auth')
+  })
+
+  it('rejects a --user namespace that is not a safe directory name', async () => {
+    process.argv.push('user@outlook.com', '--user', '../etc')
+    vi.mocked(isOutlookDomain).mockReturnValue(true)
+
+    await expect(runAuth()).rejects.toThrow('process.exit called with 1')
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('Invalid namespace "../etc"'))
+    expect(deviceCodeAuth).not.toHaveBeenCalled()
+  })
 })
 
 describe('runLogout', () => {
@@ -187,6 +230,20 @@ describe('runLogout', () => {
 
     expect(deleteStoredTokens).toHaveBeenCalledWith(undefined)
     expect(console.error).toHaveBeenCalledWith('Logged out. Cleared token(s) for: a@outlook.com, b@outlook.com')
+  })
+
+  it('clears tokens of the --user namespace only', async () => {
+    process.argv.push('user@outlook.com', '--user=alice')
+    let namespace = ''
+    vi.mocked(deleteStoredTokens).mockImplementation(async () => {
+      namespace = currentUser().namespace
+      return ['user@outlook.com']
+    })
+
+    await runLogout()
+
+    expect(deleteStoredTokens).toHaveBeenCalledWith('user@outlook.com')
+    expect(namespace).toBe('alice')
   })
 
   it('reports nothing to log out when there is no saved token for the email', async () => {

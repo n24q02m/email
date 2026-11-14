@@ -11,6 +11,7 @@ import {
   type SimpleParserOptions,
   simpleParser
 } from 'mailparser'
+import { clearScoped, scopedKey } from '../../tenant.js'
 import type { AccountConfig } from './config.js'
 import { EmailMCPError } from './errors.js'
 import { fastExtractSnippet, htmlToCleanText } from './html-utils.js'
@@ -451,11 +452,9 @@ function formatAddress(addr: AddressObject | AddressObject[] | string | undefine
 /** Cache for resolved sent folder paths per account */
 const sentFolderCache = new Map<string, Promise<string>>()
 
-/** Clear the sent folder path cache */
+/** Clear the sent folder path cache (the caller's entries in multi-user mode) */
 export function clearSentFolderCache(): number {
-  const count = sentFolderCache.size
-  sentFolderCache.clear()
-  return count
+  return clearScoped(sentFolderCache)
 }
 
 /**
@@ -464,7 +463,8 @@ export function clearSentFolderCache(): number {
  * Results are cached per account.
  */
 export async function resolveSentFolder(account: AccountConfig): Promise<string> {
-  const cached = sentFolderCache.get(account.id)
+  const cacheKey = scopedKey(account.id)
+  const cached = sentFolderCache.get(cacheKey)
   if (cached) return cached
 
   const resolvePromise = (async () => {
@@ -488,12 +488,12 @@ export async function resolveSentFolder(account: AccountConfig): Promise<string>
     return sentFolder
   })()
 
-  sentFolderCache.set(account.id, resolvePromise)
+  sentFolderCache.set(cacheKey, resolvePromise)
 
   try {
     return await resolvePromise
   } catch (err) {
-    sentFolderCache.delete(account.id)
+    sentFolderCache.delete(cacheKey)
     throw err
   }
 }
@@ -504,11 +504,9 @@ export async function resolveSentFolder(account: AccountConfig): Promise<string>
 
 const draftsFolderCache = new Map<string, Promise<string>>()
 
-/** Clear the drafts folder path cache */
+/** Clear the drafts folder path cache (the caller's entries in multi-user mode) */
 export function clearDraftsFolderCache(): number {
-  const count = draftsFolderCache.size
-  draftsFolderCache.clear()
-  return count
+  return clearScoped(draftsFolderCache)
 }
 
 /**
@@ -516,7 +514,8 @@ export function clearDraftsFolderCache(): number {
  * else the provider default. Results are cached per account.
  */
 export async function resolveDraftsFolder(account: AccountConfig): Promise<string> {
-  const cached = draftsFolderCache.get(account.id)
+  const cacheKey = scopedKey(account.id)
+  const cached = draftsFolderCache.get(cacheKey)
   if (cached) return cached
 
   const resolvePromise = (async () => {
@@ -531,11 +530,11 @@ export async function resolveDraftsFolder(account: AccountConfig): Promise<strin
     return draftsFolder
   })()
 
-  draftsFolderCache.set(account.id, resolvePromise)
+  draftsFolderCache.set(cacheKey, resolvePromise)
   try {
     return await resolvePromise
   } catch (err) {
-    draftsFolderCache.delete(account.id)
+    draftsFolderCache.delete(cacheKey)
     throw err
   }
 }
