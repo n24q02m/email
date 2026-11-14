@@ -10,6 +10,19 @@
 export const NOT_CONFIGURED_MESSAGE =
   'Email credentials are not configured.\n\nPoint EMAIL_ACCOUNTS_FILE at an accounts.toml (multi-account), set EMAIL_CREDENTIALS (or EMAIL_USER + EMAIL_APP_PASSWORD), or run `email auth outlook <address>` for Outlook.'
 
+/**
+ * Setup hint for an HTTP multi-user caller with no mailbox. Accounts are
+ * provisioned host-side per namespace, so the hint names the operator steps
+ * without revealing any server path.
+ */
+export function namespaceNotConfiguredMessage(namespace: string): string {
+  return (
+    `No email accounts are configured for user namespace "${namespace}".\n\n` +
+    `Ask the server operator to add users/${namespace}/accounts.toml under the server's email data directory, ` +
+    `or to run \`email auth outlook <address> --user ${namespace}\` for an Outlook address.`
+  )
+}
+
 export class EmailMCPError extends Error {
   constructor(
     message: string,

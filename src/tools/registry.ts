@@ -17,6 +17,7 @@ import {
   ReadResourceRequestSchema
 } from '@modelcontextprotocol/sdk/types.js'
 import { getState } from '../credential-state.js'
+import { callerNamespace } from '../tenant.js'
 import { type AttachmentsInput, attachments } from './composite/attachments.js'
 import { type ConfigInput, handleConfig } from './composite/config.js'
 import { type FoldersInput, folders } from './composite/folders.js'
@@ -29,7 +30,8 @@ import {
   EmailMCPError,
   enhanceError,
   findClosestMatch,
-  NOT_CONFIGURED_MESSAGE
+  NOT_CONFIGURED_MESSAGE,
+  namespaceNotConfiguredMessage
 } from './helpers/errors.js'
 import { isValidToolName, markStructuredContent, wrapToolResult } from './helpers/security.js'
 
@@ -329,7 +331,29 @@ const AVAILABLE_RESOURCE_URIS_STRING = RESOURCES.map((r) => r.uri).join(', ')
 const VALID_TOOL_NAMES = TOOLS.map((t) => t.name)
 const AVAILABLE_TOOLS_STRING = VALID_TOOL_NAMES.join(', ')
 
-export function registerTools(server: Server, initialAccounts: AccountConfig[]) {
+export interface RegisterToolsOptions {
+  /**
+   * Resolve the account list on every tool call instead of using the startup
+   * snapshot. HTTP multi-user mode passes `loadCallerConfig`, so each call sees
+   * only the mailboxes of the namespace its bearer token maps to.
+   */
+  resolveAccounts?: () => Promise<AccountConfig[]>
+}
+
+function notConfiguredResult(text: string) {
+  return {
+    content: [
+      {
+        type: 'text',
+        text
+      }
+    ],
+    isError: true
+  }
+}
+
+export function registerTools(server: Server, initialAccounts: AccountConfig[], options: RegisterToolsOptions = {}) {
+  const { resolveAccounts } = options
   // Mutable reference: updated when credentials are saved after startup
   let accounts = initialAccounts
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -380,31 +404,33 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[]) 
       // Credential guard: when not configured, return setup instructions.
       // Help and config manage the credential lifecycle themselves (docs need no credentials).
       // In stdio mode, missing creds are caught up-front in init-server.ts (process.exit(1)).
-      if (name !== 'help' && name !== 'config' && accounts.length === 0) {
+      let callAccounts = accounts
+      if (resolveAccounts) {
+        callAccounts = await resolveAccounts()
+        if (name !== 'help' && name !== 'config' && callAccounts.length === 0) {
+          const namespace = callerNamespace()
+          return notConfiguredResult(
+            namespace === null ? NOT_CONFIGURED_MESSAGE : namespaceNotConfiguredMessage(namespace)
+          )
+        }
+      } else if (name !== 'help' && name !== 'config' && accounts.length === 0) {
         const credState = getState()
         if (credState === 'configured') {
           // Credentials were saved after startup (e.g. `email auth`): reload accounts
           accounts = await loadConfig()
+          callAccounts = accounts
         } else {
-          return {
-            content: [
-              {
-                type: 'text',
-                text: NOT_CONFIGURED_MESSAGE
-              }
-            ],
-            isError: true
-          }
+          return notConfiguredResult(NOT_CONFIGURED_MESSAGE)
         }
       }
 
       const configInput = name === 'config' ? (args as unknown as ConfigInput) : undefined
-      const result = await handler(accounts, args)
+      const result = await handler(callAccounts, args)
 
       // A server instance is reused for every MCP request in one session. After a
       // successful reset, clear the in-memory account snapshot as well as the
       // durable store so the next tool call cannot continue with deleted credentials.
-      if (configInput?.action === 'setup_reset') {
+      if (configInput?.action === 'setup_reset' && !resolveAccounts) {
         accounts.length = 0
       }
 

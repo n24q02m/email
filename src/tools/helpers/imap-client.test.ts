@@ -48,8 +48,10 @@ vi.mock('./oauth2.js', () => ({
 
 import { ImapFlow } from 'imapflow'
 import { simpleParser } from 'mailparser'
+import { runAsNamespace } from '../../tenant.js'
 import {
   appendToFolder,
+  clearDraftsFolderCache,
   clearSentFolderCache,
   getAttachment,
   getFolderStatus,
@@ -57,6 +59,7 @@ import {
   modifyFlags,
   moveEmails,
   readEmail,
+  resolveDraftsFolder,
   resolveSentFolder,
   searchEmails,
   trashEmails
@@ -1512,5 +1515,53 @@ describe('clearSentFolderCache', () => {
     // Third call (should re-resolve)
     await resolveSentFolder(account)
     expect(mockClient.list).toHaveBeenCalledTimes(2)
+  })
+})
+
+// ============================================================================
+// resolveDraftsFolder + per-namespace folder caches
+// ============================================================================
+
+describe('resolveDraftsFolder', () => {
+  beforeEach(() => {
+    clearDraftsFolderCache()
+  })
+
+  it('prefers the folder flagged Drafts and caches it per account', async () => {
+    mockClient.list.mockResolvedValue([
+      { name: 'Entwuerfe', path: 'Entwuerfe', flags: new Set(['\\Drafts']), delimiter: '/' }
+    ])
+
+    expect(await resolveDraftsFolder(account)).toBe('Entwuerfe')
+    expect(await resolveDraftsFolder(account)).toBe('Entwuerfe')
+    expect(mockClient.list).toHaveBeenCalledTimes(1)
+    expect(clearDraftsFolderCache()).toBe(1)
+  })
+
+  it('falls back to the provider default when listing fails', async () => {
+    mockClient.list.mockRejectedValue(new Error('NO LIST'))
+    expect(await resolveDraftsFolder(account)).toBe('[Gmail]/Drafts')
+    expect(await resolveDraftsFolder({ ...account, id: 'custom', imap: { ...account.imap, host: 'imap.x.io' } })).toBe(
+      'Drafts'
+    )
+  })
+
+  it('keeps two namespaces that reuse an account id apart', async () => {
+    mockClient.list.mockResolvedValueOnce([
+      { name: 'A', path: 'A-Drafts', flags: new Set(['\\Drafts']), delimiter: '/' }
+    ])
+    mockClient.list.mockResolvedValueOnce([
+      { name: 'B', path: 'B-Drafts', flags: new Set(['\\Drafts']), delimiter: '/' }
+    ])
+
+    expect(await runAsNamespace('alice', () => resolveDraftsFolder(account))).toBe('A-Drafts')
+    expect(await runAsNamespace('bob', () => resolveDraftsFolder(account))).toBe('B-Drafts')
+    expect(await runAsNamespace('alice', () => resolveDraftsFolder(account))).toBe('A-Drafts')
+    expect(mockClient.list).toHaveBeenCalledTimes(2)
+
+    // A caller's cache_clear drops its own entries only.
+    expect(runAsNamespace('alice', () => clearDraftsFolderCache())).toBe(1)
+    expect(runAsNamespace('alice', () => clearSentFolderCache())).toBe(0)
+    expect(clearDraftsFolderCache()).toBe(1)
   })
 })

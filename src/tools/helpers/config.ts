@@ -3,10 +3,13 @@
  * Parses EMAIL_CREDENTIALS env var and auto-discovers IMAP/SMTP settings
  */
 
-import { discoverAccountsFile, readAccountsFile } from './accounts-file.js'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+import { callerNamespace, namespaceDir } from '../../tenant.js'
+import { ACCOUNTS_FILE_NAME, discoverAccountsFile, readAccountsFile } from './accounts-file.js'
 import { EmailMCPError } from './errors.js'
 import type { OAuth2Tokens } from './oauth2.js'
-import { isOutlookDomain, loadStoredTokens } from './oauth2.js'
+import { isOutlookDomain, loadOutlookEmails, loadStoredTokens } from './oauth2.js'
 
 export interface ServerConfig {
   host: string
@@ -503,6 +506,40 @@ export async function loadConfig(): Promise<AccountConfig[]> {
     return []
   }
   return parseCredentials(credentials)
+}
+
+/** Path of a multi-user namespace's accounts file: `<data dir>/users/<namespace>/accounts.toml`. */
+export function namespaceAccountsFile(namespace: string): string {
+  return join(namespaceDir(namespace), ACCOUNTS_FILE_NAME)
+}
+
+/**
+ * Accounts of the current caller.
+ *
+ * Outside HTTP multi-user mode there is one principal and this is `loadConfig()`.
+ * For a multi-user caller only that caller's namespace is read:
+ * `<data dir>/users/<namespace>/accounts.toml` when it exists, plus every
+ * Outlook address with a grant saved in that namespace's `tokens.json` (by
+ * `email auth outlook <address> --user <namespace>`) that the file does not
+ * already list. The server-wide sources (`EMAIL_ACCOUNTS_FILE`,
+ * `EMAIL_CREDENTIALS`, the legacy config) are never consulted, so a caller can
+ * reach neither the operator's mailboxes nor another caller's.
+ *
+ * Called once per tool call, so an edited file applies on the next call.
+ */
+export async function loadCallerConfig(): Promise<AccountConfig[]> {
+  const namespace = callerNamespace()
+  if (namespace === null) return loadConfig()
+
+  const path = namespaceAccountsFile(namespace)
+  const accounts = existsSync(path) ? await loadAccountsFile(path) : []
+  const listed = new Set(accounts.map((account) => account.email.toLowerCase()))
+  for (const email of await loadOutlookEmails()) {
+    if (listed.has(email)) continue
+    const account = await createOAuth2Account(email)
+    if (account) accounts.push(account)
+  }
+  return accounts
 }
 
 /**

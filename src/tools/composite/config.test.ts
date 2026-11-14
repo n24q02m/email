@@ -23,6 +23,7 @@ vi.mock('../helpers/oauth2.js', () => ({
 }))
 
 import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
+import { runAsNamespace } from '../../tenant.js'
 import { clearSentFolderCache } from '../helpers/imap-client.js'
 import { _resetTokenCache } from '../helpers/oauth2.js'
 import { handleConfig } from './config.js'
@@ -193,5 +194,53 @@ describe('config - unknown action', () => {
   it('throws for unknown action', async () => {
     const input = { action: 'unknown' } as unknown as ConfigInput
     await expect(handleConfig(accounts, input)).rejects.toThrow('Unknown action: unknown')
+  })
+})
+
+describe('config - HTTP multi-user caller', () => {
+  const asAlice = <T>(fn: () => Promise<T>) => runAsNamespace('alice', fn)
+
+  it('status reports only the accounts resolved for the caller, never the server-wide state', async () => {
+    mockGetState.mockReturnValue('awaiting_setup')
+    const result = await asAlice(() => handleConfig([accounts[0]!], { action: 'status' }))
+    expect(result).toEqual({ action: 'status', state: 'configured', mode: 'single', accounts: ['user1@gmail.com'] })
+  })
+
+  it('setup_status and setup_start reflect the caller namespace', async () => {
+    expect(await asAlice(() => handleConfig([], { action: 'setup_status' }))).toEqual({
+      action: 'setup_status',
+      state: 'awaiting_setup'
+    })
+    const start = (await asAlice(() => handleConfig(accounts, { action: 'setup_start' }))) as {
+      state: string
+      message: string
+    }
+    expect(start.state).toBe('configured')
+    expect(start.message).toContain('users/alice/accounts.toml')
+    expect(start.message).toContain('--user alice')
+  })
+
+  it.each(['setup_reset', 'setup_complete'] as const)(
+    'refuses %s and leaves the server state alone',
+    async (action) => {
+      await expect(asAlice(() => handleConfig(accounts, { action }))).rejects.toMatchObject({
+        code: 'MULTI_USER_HOST_SIDE'
+      })
+      expect(mockResetState).not.toHaveBeenCalled()
+      expect(mockResolveCredentialState).not.toHaveBeenCalled()
+    }
+  )
+
+  it('set and cache_clear behave as in single-user mode', async () => {
+    expect(await asAlice(() => handleConfig(accounts, { action: 'set' }))).toMatchObject({ action: 'set', ok: false })
+    expect(await asAlice(() => handleConfig(accounts, { action: 'cache_clear' }))).toMatchObject({
+      action: 'cache_clear',
+      ok: true
+    })
+  })
+
+  it('rejects an unknown action', async () => {
+    const input = { action: 'unknown' } as unknown as ConfigInput
+    await expect(asAlice(() => handleConfig(accounts, input))).rejects.toThrow('Unknown action: unknown')
   })
 })
