@@ -37,3 +37,6 @@ htmlcov/
 *.bak
 /*.patch
 /*.diff
+
+# Generated at publish time from bun.lock (scripts/shrinkwrap-from-bun.mjs)
+npm-shrinkwrap.json
