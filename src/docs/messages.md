@@ -82,13 +82,13 @@ Move emails to another folder.
 ```
 
 ### archive
-Archive emails (auto-detects archive folder per provider).
+Archive emails. The archive folder is detected from the folder list (a folder whose name contains Archive or All Mail, or that carries the `\Archive` or `\All` flag); when none is found (or listing fails) it falls back to `[Gmail]/All Mail` on Gmail and `Archive` elsewhere. If the server rejects the move (for example, no archive folder exists), the call fails with "The server rejected moving N message(s)" and the messages stay where they were; use `move` with an explicit `destination` instead. `move` and the flag actions fail the same way when the server rejects them.
 ```json
 {"action": "archive", "account": "user@gmail.com", "uids": [123, 456]}
 ```
 
 ### trash
-Delete emails (moves to trash).
+Move emails to the account's Trash folder (the folder flagged `\Trash`, else one named Trash, Deleted Items, Deleted Messages, Deleted or Bin). Nothing is deleted permanently: empty the Trash from the mail client. The result reports `trash_folder`. The call fails when the account has no Trash folder, when `folder` already is the Trash, or when the server rejects the move.
 ```json
 {"action": "trash", "account": "user@gmail.com", "uid": 123}
 ```
