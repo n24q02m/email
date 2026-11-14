@@ -24,7 +24,7 @@ import type { CredentialState } from '../../credential-state.js'
 import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
 import { callerNamespace } from '../../tenant.js'
 import type { AccountConfig, AccountMode } from '../helpers/config.js'
-import { accountMode, enabledAccounts, isAccountEnabled } from '../helpers/config.js'
+import { accountMode, enabledAccounts, isAccountEnabled, loadConfig } from '../helpers/config.js'
 import { refuseInDraftOnly } from '../helpers/draft-only.js'
 import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
 import { clearDraftsFolderCache, clearSentFolderCache } from '../helpers/imap-client.js'
@@ -219,6 +219,11 @@ async function handleSetupReset(): Promise<ConfigSetupResetResult> {
 async function handleSetupComplete(accounts: AccountConfig[]): Promise<ConfigSetupCompleteResult> {
   const previousState = getState()
   const newState = await resolveCredentialState()
+  // `accounts` is the server's shared snapshot, emptied in place by setup_reset:
+  // re-read the source and refill it in place so this reply and the next tool
+  // call in every session see the same accounts.
+  const reloaded = newState === 'configured' ? await loadConfig() : []
+  accounts.splice(0, accounts.length, ...reloaded)
   return {
     action: 'setup_complete',
     previous_state: previousState,
