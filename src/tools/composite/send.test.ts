@@ -9,7 +9,8 @@ vi.mock('../helpers/imap-client.js', () => ({
   appendToFolder: vi.fn()
 }))
 
-vi.mock('../helpers/smtp-client.js', () => ({
+vi.mock('../helpers/smtp-client.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../helpers/smtp-client.js')>()),
   sendNewEmail: vi.fn(),
   replyToEmail: vi.fn(),
   forwardEmail: vi.fn()
@@ -861,5 +862,54 @@ describe('send - draft-only mode', () => {
     await expect(
       send(icloudAccounts, { action: 'new', account: 'user1@icloud.com', to: 'r@test.com', subject: 'T', body: 'B' })
     ).rejects.toThrow('could not save the draft')
+  })
+})
+
+describe('send - reported subject', () => {
+  const original = {
+    account_id: 'user1_gmail_com',
+    account_email: 'user1@gmail.com',
+    uid: 8,
+    message_id: '<o8@test>',
+    subject: 'Re: Already a reply',
+    from: 'sender@test.com',
+    to: 'user1@gmail.com',
+    date: '2025-06-01',
+    flags: [],
+    body_text: 'body',
+    attachments: []
+  }
+
+  it('does not stack Re: when the original subject has one', async () => {
+    mockReadEmail.mockResolvedValue(original)
+    mockReplyToEmail.mockResolvedValue({ success: true, message_id: '<r>' })
+
+    const result = await send(gmailAccounts, { action: 'reply', account: 'user1@gmail.com', uid: 8, body: 'B' })
+
+    expect(result.subject).toBe('Re: Already a reply')
+  })
+
+  it('reports the prefixed subject for an explicit subject too', async () => {
+    mockReadEmail.mockResolvedValue({ ...original, subject: 'Fwd: Report' })
+    mockReplyToEmail.mockResolvedValue({ success: true, message_id: '<r>' })
+    mockForwardEmail.mockResolvedValue({ success: true, message_id: '<f>' })
+
+    const reply = await send(gmailAccounts, {
+      action: 'reply',
+      account: 'user1@gmail.com',
+      uid: 8,
+      subject: 'Custom',
+      body: 'B'
+    })
+    const forward = await send(gmailAccounts, {
+      action: 'forward',
+      account: 'user1@gmail.com',
+      uid: 8,
+      to: 'c@test.com',
+      body: 'B'
+    })
+
+    expect(reply.subject).toBe('Re: Custom')
+    expect(forward.subject).toBe('Fwd: Report')
   })
 })

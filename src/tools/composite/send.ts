@@ -9,7 +9,7 @@ import { isDraftOnly } from '../helpers/draft-only.js'
 import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
 import { appendToFolder, readEmail, resolveDraftsFolder, resolveSentFolder } from '../helpers/imap-client.js'
 import type { EmailAttachment, SendResult } from '../helpers/smtp-client.js'
-import { forwardEmail, replyToEmail, sendNewEmail } from '../helpers/smtp-client.js'
+import { forwardEmail, forwardSubject, replySubject, replyToEmail, sendNewEmail } from '../helpers/smtp-client.js'
 
 /**
  * Providers whose SMTP servers auto-save sent messages to the Sent folder.
@@ -204,7 +204,7 @@ async function handleReply(accounts: AccountConfig[], input: SendInput): Promise
     action: 'reply',
     from: account.email,
     to: replyTo,
-    subject: input.subject || `Re: ${original.subject}`,
+    subject: replySubject(input.subject || original.subject),
     in_reply_to: original.message_id,
     success: result.success,
     message_id: result.message_id,
@@ -256,7 +256,7 @@ async function handleForward(accounts: AccountConfig[], input: SendInput): Promi
     action: 'forward',
     from: account.email,
     to: input.to,
-    subject: input.subject || `Fwd: ${original.subject}`,
+    subject: forwardSubject(input.subject || original.subject),
     success: result.success,
     message_id: result.message_id,
     ...(await finish(account, result, asDraft(input)))
