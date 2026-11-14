@@ -449,7 +449,7 @@ describe('messages - archive', () => {
 
 describe('messages - trash', () => {
   it('trashes emails', async () => {
-    mockTrashEmails.mockResolvedValue({ success: true, trashed: 1 })
+    mockTrashEmails.mockResolvedValue({ success: true, trashed: 1, trash_folder: 'Trash' })
 
     const result = await messages(accounts, { action: 'trash', uid: 99, account: 'user1@gmail.com' })
 
@@ -603,7 +603,23 @@ describe('messages - archive (extended)', () => {
 
     const result = await messages([failAccount], { action: 'archive', uid: 1 })
 
-    // Default for non-Gmail/non-Outlook/non-Yahoo is [Gmail]/All Mail
+    // A host that is not Gmail must not be sent to a Gmail-only path; RFC 6154 names it Archive.
+    expect(result.archive_folder).toBe('Archive')
+  })
+
+  it('uses the Gmail archive path for a Gmail host when folder listing fails', async () => {
+    const gmailAccount: AccountConfig = {
+      id: 'fail_listing_gmail_account',
+      email: 'user@workspace.example',
+      password: 'pass',
+      imap: { host: 'imap.gmail.com', port: 993, secure: true },
+      smtp: { host: 'smtp.gmail.com', port: 465, secure: true }
+    }
+    mockListFolders.mockRejectedValue(new Error('connection refused'))
+    mockMoveEmails.mockResolvedValue({ success: true, moved: 1 })
+
+    const result = await messages([gmailAccount], { action: 'archive', uid: 1 })
+
     expect(result.archive_folder).toBe('[Gmail]/All Mail')
   })
 
@@ -659,7 +675,7 @@ describe('messages - trash (extended)', () => {
   })
 
   it('supports batch uids', async () => {
-    mockTrashEmails.mockResolvedValue({ success: true, trashed: 3 })
+    mockTrashEmails.mockResolvedValue({ success: true, trashed: 3, trash_folder: 'Trash' })
 
     const result = await messages(accounts, {
       action: 'trash',
