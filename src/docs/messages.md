@@ -168,7 +168,7 @@ password = "app-specific-password"
 aliases = ["hello@example.com", "support@example.com"]
 ```
 
-The login stays `email`; an alias only changes the From header and the SMTP envelope sender, so the provider must allow sending as that address. Search and read already cover mail sent to every alias, since it lands in the same mailbox (`TO hello@example.com` narrows a search to one address). Any other `from` is rejected with `SENDER_NOT_ALLOWED`, and an alias can belong to only one account.
+The login stays `email`; an alias only changes the From header and the SMTP envelope sender, so the provider must allow sending as that address. Search and read already cover mail sent to every alias, since it lands in the same mailbox (`TO hello@example.com` narrows a search to one address). Any other `from` is refused with an error saying the account cannot send as that address, and an alias can belong to only one account.
 
 ### Draft-only mode
 
