@@ -2,6 +2,51 @@
 
 <!-- version list -->
 
+## v1.44.0-beta.1 (2026-11-14)
+
+### Bug Fixes
+
+- Keep tests independent of the developer's accounts file
+  ([#1250](https://github.com/n24q02m/email/pull/1250),
+  [`6012283`](https://github.com/n24q02m/email/commit/6012283f0be059a9c55b8681ee8b7ff5f495b010))
+
+- Move to hull 0.6.1 ([#1254](https://github.com/n24q02m/email/pull/1254),
+  [`606bf76`](https://github.com/n24q02m/email/commit/606bf76f34588af123efa618cefad688aa436da5))
+
+- Move trashed mail to Trash and fail on rejected IMAP moves and flag changes
+  ([#1256](https://github.com/n24q02m/email/pull/1256),
+  [`30eb06c`](https://github.com/n24q02m/email/commit/30eb06c0de13b5f1347875a386a2fdda8e9c0a38))
+
+- Reload accounts on config setup_complete after setup_reset
+  ([#1258](https://github.com/n24q02m/email/pull/1258),
+  [`388589b`](https://github.com/n24q02m/email/commit/388589b3a4b7374fb87e0bc4871a9c3aba6bcf2d))
+
+- Report the Message-ID and subject that were actually sent
+  ([#1249](https://github.com/n24q02m/email/pull/1249),
+  [`005b837`](https://github.com/n24q02m/email/commit/005b837a005535fc98f2d386dc7268e827c39c11))
+
+- Update handover version and sender error wording in docs
+  ([#1257](https://github.com/n24q02m/email/pull/1257),
+  [`577f073`](https://github.com/n24q02m/email/commit/577f073002091a068ca27c3bad52eab66f235718))
+
+- **deps**: Update docker/login-action action to v4.8.0
+  ([#1253](https://github.com/n24q02m/email/pull/1253),
+  [`49f1632`](https://github.com/n24q02m/email/commit/49f163248b0b14dee3a8cc817f004efc04579476))
+
+- **deps**: Update patch dependencies ([#1252](https://github.com/n24q02m/email/pull/1252),
+  [`0cf3c53`](https://github.com/n24q02m/email/commit/0cf3c53a7ba00560904de9692452547aff53a37e))
+
+### Features
+
+- Send as account aliases (accounts file aliases, messages from)
+  ([#1248](https://github.com/n24q02m/email/pull/1248),
+  [`50757f8`](https://github.com/n24q02m/email/commit/50757f8b51c9194cf1ce5c4bd788ab8812a68c52))
+
+- Serve several users over HTTP with per-namespace mailboxes
+  ([#1255](https://github.com/n24q02m/email/pull/1255),
+  [`46b07aa`](https://github.com/n24q02m/email/commit/46b07aae120c4469183db2ad2e9a29698cf6cc09))
+
+
 ## v1.43.0 (2026-11-12)
 
 ### Bug Fixes
