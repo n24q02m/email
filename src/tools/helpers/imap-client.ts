@@ -769,10 +769,17 @@ export async function modifyFlags(
     const lock = await client.getMailboxLock(folder)
     try {
       const uidStr = uids.join(',')
-      if (action === 'add') {
-        await client.messageFlagsAdd({ uid: uidStr }, flags)
-      } else {
-        await client.messageFlagsRemove({ uid: uidStr }, flags)
+      // imapflow resolves false (it does not throw) when the server answers NO.
+      const updated =
+        action === 'add'
+          ? await client.messageFlagsAdd({ uid: uidStr }, flags)
+          : await client.messageFlagsRemove({ uid: uidStr }, flags)
+      if (updated === false) {
+        throw new EmailMCPError(
+          `The server rejected the flag change on ${uids.length} message(s) in "${folder}"`,
+          'FLAG_UPDATE_FAILED',
+          'Check the UIDs with a search in the same folder, then retry'
+        )
       }
       return { success: true, modified: uids.length }
     } finally {
@@ -793,8 +800,7 @@ export async function moveEmails(
   return withConnection(account, async (client) => {
     const lock = await client.getMailboxLock(fromFolder)
     try {
-      const uidStr = uids.join(',')
-      await client.messageMove({ uid: uidStr }, toFolder)
+      await moveOrThrow(client, uids, fromFolder, toFolder)
       return { success: true, moved: uids.length }
     } finally {
       lock.release()
@@ -803,19 +809,60 @@ export async function moveEmails(
 }
 
 /**
- * Delete (trash) emails
+ * MOVE `uids` from the selected `fromFolder` to `toFolder`. imapflow resolves
+ * false instead of throwing when the server rejects the move (for example a
+ * destination that does not exist), so the result must be checked.
+ */
+async function moveOrThrow(client: ImapFlow, uids: number[], fromFolder: string, toFolder: string): Promise<void> {
+  const moved = await client.messageMove({ uid: uids.join(',') }, toFolder)
+  if (moved === false) {
+    throw new EmailMCPError(
+      `The server rejected moving ${uids.length} message(s) from "${fromFolder}" to "${toFolder}"`,
+      'MOVE_FAILED',
+      'Check the destination exists with folders list, then retry with action "move" and an explicit destination'
+    )
+  }
+}
+
+/** Conventional Trash names, used only when no folder carries the \Trash special-use attribute. */
+const TRASH_FOLDER_NAMES = ['trash', 'deleted items', 'deleted messages', 'deleted', 'bin', '[gmail]/trash']
+
+function findTrashFolder(mailboxes: ListResponse[]): string | undefined {
+  const flagged = mailboxes.find((mb) => mb.specialUse === '\\Trash' || mb.flags?.has('\\Trash'))
+  if (flagged) return flagged.path
+  return mailboxes.find((mb) => TRASH_FOLDER_NAMES.includes(mb.path.toLowerCase()))?.path
+}
+
+/**
+ * Trash emails: move them to the account's Trash folder. Never expunges, so a
+ * trashed message stays recoverable; messages already in Trash are refused
+ * rather than deleted for good.
  */
 export async function trashEmails(
   account: AccountConfig,
   uids: number[],
   folder: string
-): Promise<{ success: boolean; trashed: number }> {
+): Promise<{ success: boolean; trashed: number; trash_folder: string }> {
   return withConnection(account, async (client) => {
+    const trashFolder = findTrashFolder(await client.list())
+    if (!trashFolder) {
+      throw new EmailMCPError(
+        `No Trash folder found for ${account.email}`,
+        'TRASH_FOLDER_NOT_FOUND',
+        'Use action "move" with an explicit destination (folders list shows the paths)'
+      )
+    }
+    if (trashFolder === folder) {
+      throw new EmailMCPError(
+        `The message(s) are already in "${trashFolder}"`,
+        'ALREADY_IN_TRASH',
+        'Permanent deletion is not offered; empty the Trash from the mail client'
+      )
+    }
     const lock = await client.getMailboxLock(folder)
     try {
-      const uidStr = uids.join(',')
-      await client.messageDelete({ uid: uidStr })
-      return { success: true, trashed: uids.length }
+      await moveOrThrow(client, uids, folder, trashFolder)
+      return { success: true, trashed: uids.length, trash_folder: trashFolder }
     } finally {
       lock.release()
     }

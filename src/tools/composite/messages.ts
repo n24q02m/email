@@ -311,20 +311,17 @@ async function resolveArchiveFolder(account: AccountConfig): Promise<string> {
   if (cached) return cached
 
   const resolvePromise = (async () => {
-    // Detect archive folder based on provider
-    let archiveFolder = '[Gmail]/All Mail'
-    if (account.imap.host.includes('office365') || account.imap.host.includes('outlook')) {
-      archiveFolder = 'Archive'
-    } else if (account.imap.host.includes('yahoo')) {
-      archiveFolder = 'Archive'
-    }
+    // Provider default when the folder listing finds nothing: the Gmail path only
+    // for a Gmail host, otherwise the RFC 6154 name. A failed MOVE now surfaces
+    // as MOVE_FAILED instead of a silent success.
+    const archiveFolder = account.imap.host.includes('gmail') ? '[Gmail]/All Mail' : 'Archive'
 
     // Try to find actual archive folder
     try {
       const folders = await listFolders(account)
       const found = folders.find(isArchiveFolder)
       if (found) {
-        archiveFolder = found.path
+        return found.path
       }
     } catch {
       // Use default if folder listing fails

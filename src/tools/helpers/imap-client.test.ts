@@ -645,6 +645,18 @@ describe('modifyFlags', () => {
     expect(result.modified).toBe(1)
   })
 
+  it.each([
+    ['add', 'messageFlagsAdd'],
+    ['remove', 'messageFlagsRemove']
+  ] as const)('fails when the server rejects the flag %s', async (action, method) => {
+    mockClient[method].mockResolvedValue(false)
+
+    await expect(modifyFlags(account, [5], 'INBOX', ['\\Seen'], action)).rejects.toMatchObject({
+      code: 'FLAG_UPDATE_FAILED'
+    })
+    expect(mockRelease).toHaveBeenCalled()
+  })
+
   it('always releases the mailbox lock', async () => {
     mockClient.messageFlagsAdd.mockRejectedValue(new Error('fail'))
 
@@ -666,6 +678,14 @@ describe('moveEmails', () => {
     expect(result.success).toBe(true)
     expect(result.moved).toBe(2)
   })
+
+  it('fails when the server rejects the move instead of reporting it moved', async () => {
+    // imapflow resolves false (it does not throw) when the server answers NO.
+    mockClient.messageMove.mockResolvedValue(false)
+
+    await expect(moveEmails(account, [1], 'INBOX', 'Missing')).rejects.toMatchObject({ code: 'MOVE_FAILED' })
+    expect(mockRelease).toHaveBeenCalled()
+  })
 })
 
 // ============================================================================
@@ -673,12 +693,63 @@ describe('moveEmails', () => {
 // ============================================================================
 
 describe('trashEmails', () => {
-  it('deletes emails from folder', async () => {
+  const mailbox = (path: string, flags: string[] = [], specialUse?: string) => ({
+    name: path,
+    path,
+    flags: new Set(flags),
+    delimiter: '/',
+    ...(specialUse ? { specialUse } : {})
+  })
+
+  it('moves the messages to the folder flagged \\Trash and never expunges', async () => {
+    mockClient.list.mockResolvedValue([mailbox('INBOX'), mailbox('Papierkorb', ['\\HasNoChildren', '\\Trash'])])
+
     const result = await trashEmails(account, [3, 4], 'INBOX')
 
-    expect(mockClient.messageDelete).toHaveBeenCalledWith({ uid: '3,4' })
-    expect(result.success).toBe(true)
-    expect(result.trashed).toBe(2)
+    expect(mockClient.messageMove).toHaveBeenCalledWith({ uid: '3,4' }, 'Papierkorb')
+    expect(mockClient.messageDelete).not.toHaveBeenCalled()
+    expect(result).toEqual({ success: true, trashed: 2, trash_folder: 'Papierkorb' })
+  })
+
+  it('finds the Trash folder by its special-use attribute', async () => {
+    mockClient.list.mockResolvedValue([mailbox('INBOX'), mailbox('[Gmail]/Bin', [], '\\Trash')])
+
+    const result = await trashEmails(account, [5], 'INBOX')
+
+    expect(result.trash_folder).toBe('[Gmail]/Bin')
+  })
+
+  it('falls back to a conventional Trash name when no folder is flagged', async () => {
+    mockClient.list.mockResolvedValue([mailbox('INBOX'), mailbox('Deleted Items')])
+
+    const result = await trashEmails(account, [5], 'INBOX')
+
+    expect(mockClient.messageMove).toHaveBeenCalledWith({ uid: '5' }, 'Deleted Items')
+    expect(result.trash_folder).toBe('Deleted Items')
+  })
+
+  it('refuses rather than deleting when the account has no Trash folder', async () => {
+    mockClient.list.mockResolvedValue([mailbox('INBOX'), mailbox('Archive')])
+
+    await expect(trashEmails(account, [5], 'INBOX')).rejects.toMatchObject({ code: 'TRASH_FOLDER_NOT_FOUND' })
+    expect(mockClient.messageMove).not.toHaveBeenCalled()
+    expect(mockClient.messageDelete).not.toHaveBeenCalled()
+  })
+
+  it('refuses messages that are already in Trash instead of deleting them for good', async () => {
+    mockClient.list.mockResolvedValue([mailbox('INBOX'), mailbox('Trash', ['\\Trash'])])
+
+    await expect(trashEmails(account, [5], 'Trash')).rejects.toMatchObject({ code: 'ALREADY_IN_TRASH' })
+    expect(mockClient.messageMove).not.toHaveBeenCalled()
+    expect(mockClient.messageDelete).not.toHaveBeenCalled()
+  })
+
+  it('fails when the server rejects the move to Trash', async () => {
+    mockClient.list.mockResolvedValue([mailbox('Trash', ['\\Trash'])])
+    mockClient.messageMove.mockResolvedValue(false)
+
+    await expect(trashEmails(account, [5], 'INBOX')).rejects.toMatchObject({ code: 'MOVE_FAILED' })
+    expect(mockRelease).toHaveBeenCalled()
   })
 })
 
