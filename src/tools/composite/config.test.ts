@@ -22,8 +22,14 @@ vi.mock('../helpers/oauth2.js', () => ({
   _resetTokenCache: vi.fn()
 }))
 
+vi.mock('../helpers/config.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../helpers/config.js')>()),
+  loadConfig: vi.fn()
+}))
+
 import { getState, resetState, resolveCredentialState } from '../../credential-state.js'
 import { runAsNamespace } from '../../tenant.js'
+import { loadConfig } from '../helpers/config.js'
 import { clearSentFolderCache } from '../helpers/imap-client.js'
 import { _resetTokenCache } from '../helpers/oauth2.js'
 import { handleConfig } from './config.js'
@@ -32,6 +38,7 @@ import { clearArchiveFolderCache } from './messages.js'
 const mockGetState = vi.mocked(getState)
 const mockResetState = vi.mocked(resetState)
 const mockResolveCredentialState = vi.mocked(resolveCredentialState)
+const mockLoadConfig = vi.mocked(loadConfig)
 
 const accounts: AccountConfig[] = [
   {
@@ -147,8 +154,9 @@ describe('config - setup_complete', () => {
   it('re-checks and returns configured state with accounts', async () => {
     mockGetState.mockReturnValue('awaiting_setup')
     mockResolveCredentialState.mockResolvedValue('configured')
+    mockLoadConfig.mockResolvedValue([...accounts])
 
-    const result = await handleConfig(accounts, { action: 'setup_complete' })
+    const result = await handleConfig([...accounts], { action: 'setup_complete' })
 
     expect(mockResolveCredentialState).toHaveBeenCalledOnce()
     expect(result).toEqual({
@@ -158,6 +166,34 @@ describe('config - setup_complete', () => {
       mode: 'multi',
       accounts: ['user1@gmail.com', 'user2@outlook.com']
     })
+  })
+
+  it('reloads the accounts emptied by setup_reset and refills the shared snapshot', async () => {
+    mockGetState.mockReturnValue('awaiting_setup')
+    mockResolveCredentialState.mockResolvedValue('configured')
+    mockLoadConfig.mockResolvedValue([...accounts])
+    const snapshot: AccountConfig[] = []
+
+    const result = await handleConfig(snapshot, { action: 'setup_complete' })
+
+    expect(mockLoadConfig).toHaveBeenCalledOnce()
+    expect(result).toMatchObject({
+      state: 'configured',
+      mode: 'multi',
+      accounts: ['user1@gmail.com', 'user2@outlook.com']
+    })
+    expect(snapshot.map((a) => a.email)).toEqual(['user1@gmail.com', 'user2@outlook.com'])
+  })
+
+  it('empties the snapshot without reading accounts when still not configured', async () => {
+    mockGetState.mockReturnValue('configured')
+    mockResolveCredentialState.mockResolvedValue('awaiting_setup')
+    const snapshot: AccountConfig[] = [...accounts]
+
+    await handleConfig(snapshot, { action: 'setup_complete' })
+
+    expect(mockLoadConfig).not.toHaveBeenCalled()
+    expect(snapshot).toEqual([])
   })
 
   it('returns empty accounts when still not configured', async () => {
