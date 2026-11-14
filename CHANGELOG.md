@@ -2,6 +2,19 @@
 
 <!-- version list -->
 
+## v1.44.0-beta.4 (2026-11-14)
+
+### Bug Fixes
+
+- Let renovate merge only after every check is green
+  ([#1261](https://github.com/n24q02m/email/pull/1261),
+  [`fd8dd60`](https://github.com/n24q02m/email/commit/fd8dd60123da984e4e3644da102e13ddc3334ef3))
+
+- Require CI checks on main and limit the Renovate bypass to pull requests
+  ([#1263](https://github.com/n24q02m/email/pull/1263),
+  [`37a4342`](https://github.com/n24q02m/email/commit/37a434273240004d4dc5503ee7ab215aef27d24b))
+
+
 ## v1.44.0-beta.3 (2026-11-14)
 
 ### Bug Fixes
