@@ -2,6 +2,55 @@
 
 <!-- version list -->
 
+## v1.44.0-beta.5 (2026-11-16)
+
+### Bug Fixes
+
+- Bring CI workflows in line with the fleet CI policy lint
+  ([#1267](https://github.com/n24q02m/email/pull/1267),
+  [`a2c8b1d`](https://github.com/n24q02m/email/commit/a2c8b1d5465500d7fb4f85f8d27511b6028399f3))
+
+- Dispatch the tap and bucket cd.yml that replaced bump.yml
+  ([#1266](https://github.com/n24q02m/email/pull/1266),
+  [`3981f8f`](https://github.com/n24q02m/email/commit/3981f8f9308ce3a95a88c9440747758cf8bdf7f0))
+
+- Pin hull 0.8.0-beta.1 so the beta ships the SQLite read-lock and lease-count fixes
+  ([#1270](https://github.com/n24q02m/email/pull/1270),
+  [`5d6f1ce`](https://github.com/n24q02m/email/commit/5d6f1ce12750d8e88c27f8047d537f86b01f377c))
+
+- Run lint and tests on workflow_dispatch in ci
+  ([#1264](https://github.com/n24q02m/email/pull/1264),
+  [`5e10927`](https://github.com/n24q02m/email/commit/5e1092743c326b2bbdac0cc723051eff0522d428))
+
+- Start the marketplace plugin sync with workflow_dispatch
+  ([#1265](https://github.com/n24q02m/email/pull/1265),
+  [`cfdfec9`](https://github.com/n24q02m/email/commit/cfdfec96aa2fbd8892e593ee8f8789642faf5568))
+
+- Upload coverage to codecov over oidc and fail the job when it is refused
+  ([#1268](https://github.com/n24q02m/email/pull/1268),
+  [`70a3197`](https://github.com/n24q02m/email/commit/70a319732a5d8dcc0df0b2965afc611d5d7e6492))
+
+- **deps**: Lock file maintenance ([#1273](https://github.com/n24q02m/email/pull/1273),
+  [`80fd6dc`](https://github.com/n24q02m/email/commit/80fd6dc522aee1e351fc1305d47d99900ed6808b))
+
+- **deps**: Lock file maintenance ([#1272](https://github.com/n24q02m/email/pull/1272),
+  [`6fdbd33`](https://github.com/n24q02m/email/commit/6fdbd3316b7c243788e79a180e97de9a6a894fff))
+
+- **deps**: Lock file maintenance ([#1262](https://github.com/n24q02m/email/pull/1262),
+  [`3b1c1d0`](https://github.com/n24q02m/email/commit/3b1c1d03e8ff594be5c16e8ec6d4a7b872e2f3f1))
+
+- **deps**: Update Node.js to a34ab6d ([#1251](https://github.com/n24q02m/email/pull/1251),
+  [`2770452`](https://github.com/n24q02m/email/commit/27704525d005c2407a295b3feaeb6eb36d69937a))
+
+- **deps**: Update nodemailer to ^10.4.0 ([#1271](https://github.com/n24q02m/email/pull/1271),
+  [`87e7308`](https://github.com/n24q02m/email/commit/87e73082d2f0bb72faab8bec2d0579f04883a1de))
+
+### Features
+
+- Sync cross-promo section ([#1269](https://github.com/n24q02m/email/pull/1269),
+  [`d17b80a`](https://github.com/n24q02m/email/commit/d17b80afea772d59006ecedcb9f26ed031505876))
+
+
 ## v1.44.0-beta.4 (2026-11-14)
 
 ### Bug Fixes
