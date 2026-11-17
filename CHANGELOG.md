@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.44.0 (2026-11-17)
+
+### Bug Fixes
+
+- Pin hull to 0.8.0 stable ([#1274](https://github.com/n24q02m/email/pull/1274),
+  [`06bcb81`](https://github.com/n24q02m/email/commit/06bcb81b8659a32ee8e21a449e3a033060521623))
+
+
 ## v1.44.0-beta.5 (2026-11-16)
 
 ### Bug Fixes
