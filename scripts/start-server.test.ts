@@ -72,14 +72,47 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     expect(process.exit).toHaveBeenCalledWith(0)
   })
 
-  it('refuses the removed "relay" subcommand with exit 2 and a pointer to auth', async () => {
+  it('sends "relay" down the unknown-subcommand path, whose list of subcommands does not name it', async () => {
     process.argv.push('relay')
 
     await import('./start-server.js')
-    await vi.waitFor(() => expect(process.exit).toHaveBeenCalledWith(2))
+    await vi.waitFor(() => expect(process.exit).toHaveBeenCalled())
 
-    expect(console.error).toHaveBeenCalledWith('relay was removed; run `email auth` (see README)')
+    expect(process.exit).toHaveBeenCalledWith(2)
+    const messages = vi.mocked(console.error).mock.calls.map((call) => String(call[0]))
+    const unknown = messages.find((message) => message.startsWith("email: unknown subcommand 'relay'"))
+    const listed = unknown?.match(/\(expected one of: (.+)\)$/)?.[1].split(', ')
+    expect(listed).toEqual(expect.arrayContaining(['auth', 'logout', 'config', 'messages']))
+    expect(listed).not.toContain('relay')
     expect(runAuth).not.toHaveBeenCalled()
+    expect(initServer).not.toHaveBeenCalled()
+  })
+
+  it('prints --help without a relay command', async () => {
+    process.argv.push('--help')
+    // Only what reaches stdout before the first exit counts: the real process
+    // stops there, while the mocked exit lets the module run on.
+    const events: Array<{ out: string } | { exit: unknown }> = []
+    process.exit = vi.fn((code) => {
+      events.push({ exit: code })
+      return undefined as never
+    }) as any
+    vi.spyOn(process.stdout, 'write').mockImplementation((chunk: any) => {
+      events.push({ out: String(chunk) })
+      return true
+    })
+
+    await import('./start-server.js')
+    await vi.waitFor(() => expect(process.exit).toHaveBeenCalled())
+
+    const firstExit = events.findIndex((event) => 'exit' in event)
+    expect(events[firstExit]).toEqual({ exit: 0 })
+    const help = events
+      .slice(0, firstExit)
+      .map((event) => ('out' in event ? event.out : ''))
+      .join('')
+    expect(help).toContain('operator commands:')
+    expect(help).not.toMatch(/relay/i)
     expect(initServer).not.toHaveBeenCalled()
   })
 

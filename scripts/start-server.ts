@@ -83,10 +83,6 @@ void (async () => {
         await runLogout()
         return 0
       },
-      relay: async () => {
-        console.error('relay was removed; run `email auth` (see README)')
-        return 2
-      },
       ...toolCliHandlers()
     }
   })(argv)
