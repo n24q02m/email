@@ -148,7 +148,11 @@ function initializeBody(): string {
   })
 }
 
-describe('HTTP multi-user mode', () => {
+// hull checks a bearer token against users.toml with one full scrypt derivation
+// per user row on every request, so each test here costs 1-3s on its own and
+// more while the full Vitest worker pool shares the CPU. Keep the suite bounded,
+// but allow more than the 5s unit default.
+describe('HTTP multi-user mode', { timeout: 30_000 }, () => {
   it('answers 401 without a bearer token and with an unknown one, 403 for a disabled user', async () => {
     const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream' }
     const missing = await fetch(baseUrl, { method: 'POST', headers, body: initializeBody() })
