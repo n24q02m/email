@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from './config.js'
 import {
   accountMode,
+  buildAccount,
   enabledAccounts,
   isAccountEnabled,
   loadConfig,
@@ -178,6 +179,56 @@ describe('parseCredentials', () => {
   it('generates correct ID from email', async () => {
     const result = await parseCredentials('My.User@gmail.com:pass')
     expect(result[0]!.id).toBe('my_user_gmail_com')
+  })
+})
+
+describe('account construction without a discoverable provider', () => {
+  afterEach(() => {
+    delete process.env.OUTLOOK_EXTRA_DOMAINS
+    vi.restoreAllMocks()
+  })
+
+  it('skips an address with no domain part', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(await parseCredentials('no-at-sign:password,user@:password')).toEqual([])
+    expect(spy).toHaveBeenCalledTimes(2)
+    expect(spy).toHaveBeenCalledWith(
+      'Cannot auto-discover settings for the provided email. Use format: email:password:imap.server.com'
+    )
+  })
+
+  it('skips an email-only entry on an extra OAuth domain with no known servers', async () => {
+    process.env.OUTLOOK_EXTRA_DOMAINS = 'contoso.example'
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    expect(await parseCredentials('user@contoso.example')).toEqual([])
+    expect(spy).toHaveBeenCalledWith('Skipping invalid credential entry (expected email:password)')
+  })
+
+  it('uses an explicit SMTP server next to the discovered IMAP server', async () => {
+    const account = await buildAccount({
+      email: 'user@gmail.com',
+      password: 'pw',
+      smtpHost: 'smtp.relay.example',
+      smtpPort: 2525
+    })
+
+    expect(account?.imap).toEqual({ host: 'imap.gmail.com', port: 993, secure: true })
+    expect(account?.smtp).toEqual({ host: 'smtp.relay.example', port: 2525, secure: false })
+  })
+
+  it('refuses an explicit SMTP server alone when IMAP cannot be discovered', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    const account = await buildAccount({
+      email: 'user@unknowndomain.xyz',
+      password: 'pw',
+      smtpHost: 'smtp.example.net'
+    })
+
+    expect(account).toBeNull()
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining('Custom SMTP alone is not enough'))
   })
 })
 

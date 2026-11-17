@@ -78,4 +78,35 @@ describe('restrictTool', () => {
     const other = { name: 'folders', description: 'x', inputSchema: { properties: {} } }
     expect(restrictTool(other)).toBe(other)
   })
+
+  it('drops setup_reset from the config tool without the messages note or messages params', () => {
+    const configTool = {
+      name: 'config',
+      description: 'Config.\n\nActions:\n- status (none)\n- setup_reset (none)\n- set (key, value)',
+      inputSchema: {
+        properties: {
+          action: { type: 'string', enum: ['status', 'setup_reset', 'set'] },
+          destination: { type: 'string' },
+          draft: { type: 'boolean' }
+        }
+      }
+    }
+
+    const tool = restrictTool(configTool)
+
+    expect(tool.inputSchema.properties.action.enum).toEqual(['status', 'set'])
+    expect(tool.description).toBe('Config.\n\nActions:\n- status (none)\n- set (key, value)')
+    expect(tool.inputSchema.properties.destination).toEqual({ type: 'string' })
+    expect(tool.inputSchema.properties.draft).toEqual({ type: 'boolean' })
+  })
+
+  it('leaves an action property without an enum as it is', () => {
+    const configTool = {
+      name: 'config',
+      description: 'Config.',
+      inputSchema: { properties: { action: { type: 'string' } } }
+    }
+
+    expect(restrictTool(configTool).inputSchema.properties.action).toEqual({ type: 'string' })
+  })
 })

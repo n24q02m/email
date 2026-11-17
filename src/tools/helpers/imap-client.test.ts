@@ -1417,6 +1417,19 @@ describe('resolveSentFolder', () => {
     expect(clearSentFolderCache()).toBe(0)
   })
 
+  it('keeps the provider default when the listing has no Sent folder', async () => {
+    const neutralAccount = {
+      ...account,
+      id: 'no-sent-folder',
+      imap: { host: 'imap.test.com', port: 993, secure: true }
+    }
+    mockClient.list.mockResolvedValueOnce([
+      { name: 'INBOX', path: 'INBOX', flags: new Set(['\\Inbox']), delimiter: '/' }
+    ])
+
+    expect(await resolveSentFolder(neutralAccount)).toBe('Sent')
+  })
+
   it('covers remaining branches in resolveSentFolder', async () => {
     const neutralAccount = { ...account, imap: { host: 'imap.test.com', port: 993, secure: true } }
     // Matching path but no flag
@@ -1615,6 +1628,14 @@ describe('resolveDraftsFolder', () => {
     expect(await resolveDraftsFolder({ ...account, id: 'custom', imap: { ...account.imap, host: 'imap.x.io' } })).toBe(
       'Drafts'
     )
+  })
+
+  it('keeps the provider default when the listing has no Drafts folder', async () => {
+    mockClient.list.mockResolvedValueOnce([
+      { name: 'INBOX', path: 'INBOX', flags: new Set(['\\Inbox']), delimiter: '/' }
+    ])
+
+    expect(await resolveDraftsFolder(account)).toBe('[Gmail]/Drafts')
   })
 
   it('keeps two namespaces that reuse an account id apart', async () => {

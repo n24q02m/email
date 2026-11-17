@@ -506,6 +506,36 @@ describe('composing without delivery', () => {
     expect(result.raw).toBeInstanceOf(Buffer)
     expect(mockSendMail).not.toHaveBeenCalled()
   })
+
+  it('composes a reply and a forward without opening an SMTP transport', async () => {
+    mockBuild
+      .mockResolvedValueOnce(Buffer.from('Message-ID: <reply@test>\r\nSubject: Re: Hello\r\n\r\nThanks'))
+      .mockResolvedValueOnce(Buffer.from('Message-ID: <forward@test>\r\nSubject: Fwd: Hello\r\n\r\nFYI'))
+
+    const reply = await replyToEmail(
+      account,
+      { to: 'recipient@test.com', subject: 'Hello', body: 'Thanks', in_reply_to: '<orig@test>' },
+      false
+    )
+    const forward = await forwardEmail(
+      account,
+      { to: 'other@test.com', subject: 'Hello', body: 'FYI', original_body: 'Original' },
+      false
+    )
+
+    expect(reply).toMatchObject({ success: true, message_id: '<reply@test>' })
+    expect(forward).toMatchObject({ success: true, message_id: '<forward@test>' })
+    expect(createTransport).not.toHaveBeenCalled()
+    expect(mockSendMail).not.toHaveBeenCalled()
+  })
+})
+
+describe('envelope recipients', () => {
+  it('skips empty entries left by stray commas', async () => {
+    await sendNewEmail(account, { to: 'a@test.com, ,b@test.com,', cc: ' , c@test.com', subject: 'S', body: 'B' })
+
+    expect(mockSendMail.mock.calls[0]![0].envelope.to).toEqual(['a@test.com', 'b@test.com', 'c@test.com'])
+  })
 })
 
 // ============================================================================

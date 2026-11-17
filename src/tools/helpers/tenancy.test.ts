@@ -139,6 +139,13 @@ describe('loadCallerConfig', () => {
     expect(await runAsNamespace('bob', () => loadCallerConfig())).toEqual([])
   })
 
+  it('ignores a saved grant whose address is not an Outlook mailbox', async () => {
+    await runAsNamespace('carol', () => saveTokens('carol@example.com', grant('z')))
+    expect(await runAsNamespace('carol', () => loadOutlookEmails())).toEqual(['carol@example.com'])
+
+    expect(await runAsNamespace('carol', () => loadCallerConfig())).toEqual([])
+  })
+
   it('sees an edited accounts file on the next call', async () => {
     writeAccounts('bob', '[accounts.a]\nemail = "one@example.com"\npassword = "pw"\nimap_host = "imap.example.com"\n')
     expect((await runAsNamespace('bob', () => loadCallerConfig())).map((a) => a.email)).toEqual(['one@example.com'])

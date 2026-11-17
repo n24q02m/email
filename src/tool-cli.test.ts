@@ -222,6 +222,17 @@ describe('failure paths stay on stderr with exit 1', () => {
     expect(err).not.toContain('at Object.')
   })
 
+  it('handler error that is not an EmailMCPError: prints the enhanced error', async () => {
+    vi.mocked(folders).mockRejectedValue(new Error('connect ECONNREFUSED 127.0.0.1:993'))
+
+    const code = await runToolCommand('folders', ['list'])
+
+    expect(code).toBe(1)
+    expect(out).toBe('')
+    expect(err).toContain('Error: Cannot connect to email server')
+    expect(err).not.toContain('at Object.')
+  })
+
   it('unknown option: names the flag and the valid ones', async () => {
     const code = await runToolCommand('messages', ['search', '--bogus', 'x'])
 
@@ -258,6 +269,16 @@ describe('help output', () => {
     expect(out).toContain('mark_read')
     expect(out).toContain('--query <string>')
     expect(out).toContain('Runs the same handler as the `messages` MCP tool.')
+  })
+
+  it('per-command help for a tool without actions skips the actions line', async () => {
+    const code = await runToolCommand('help', ['--help'])
+
+    expect(code).toBe(0)
+    expect(out).toContain('usage: email help <tool_name> [options]')
+    expect(out).not.toContain('actions:')
+    expect(out).toContain('<tool_name>')
+    expect(out).toContain('Tool to get documentation for (required)')
   })
 
   it('prints tool commands apart from operator commands', () => {

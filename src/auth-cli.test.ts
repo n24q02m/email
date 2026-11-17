@@ -179,6 +179,23 @@ describe('runAuth', () => {
     expect(mode).toBe('no-auth')
   })
 
+  it('treats a trailing --client-id or --user with no value as not given', async () => {
+    vi.mocked(isOutlookDomain).mockReturnValue(true)
+    const modes: string[] = []
+    vi.mocked(deviceCodeAuth).mockImplementation(async () => {
+      modes.push(currentUser().mode)
+      return {} as any
+    })
+
+    process.argv.push('user@outlook.com', '--client-id')
+    await runAuth()
+    process.argv = ['node', 'script.js', 'auth', 'user@outlook.com', '--user']
+    await runAuth()
+
+    expect(vi.mocked(deviceCodeAuth).mock.calls).toEqual([['user@outlook.com'], ['user@outlook.com']])
+    expect(modes).toEqual(['no-auth', 'no-auth'])
+  })
+
   it('rejects a --user namespace that is not a safe directory name', async () => {
     process.argv.push('user@outlook.com', '--user', '../etc')
     vi.mocked(isOutlookDomain).mockReturnValue(true)
