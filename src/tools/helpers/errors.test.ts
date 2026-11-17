@@ -7,7 +7,8 @@ import {
   findClosestMatch,
   sanitizeErrorDetails,
   suggestFixes,
-  withErrorHandling
+  withErrorHandling,
+  wrapOperationError
 } from './errors.js'
 
 describe('EmailMCPError', () => {
@@ -127,6 +128,12 @@ describe('enhanceError', () => {
   it('handles unknown SMTP error codes', () => {
     const result = enhanceError({ message: 'unknown', responseCode: 421 })
     expect(result.code).toBe('SMTP_421')
+  })
+
+  it('names an unknown SMTP code when the error carries no message', () => {
+    const result = enhanceError({ responseCode: 421 })
+    expect(result.code).toBe('SMTP_421')
+    expect(result.message).toBe('SMTP error 421')
   })
 
   it('handles EMAIL_CREDENTIALS config error', () => {
@@ -320,5 +327,30 @@ describe('sanitizeErrorDetails', () => {
     expect(sanitized.code).toBe('ERR')
     expect(sanitized.password).toBeUndefined()
     expect(sanitized.other).toBeUndefined()
+  })
+})
+
+describe('wrapOperationError', () => {
+  it('keeps the message of an Error cause and links the cause', () => {
+    const cause = new Error('connection reset')
+    const err = wrapOperationError('IMAP fetch', cause)
+    expect(err.message).toBe('IMAP fetch failed: connection reset')
+    expect((err as Error & { cause?: unknown }).cause).toBe(cause)
+  })
+
+  it('uses the error name when the message is empty', () => {
+    const cause = new TypeError('')
+    expect(wrapOperationError('IMAP fetch', cause).message).toBe('IMAP fetch failed: TypeError')
+  })
+
+  it('says there is no detail when the error has neither message nor name', () => {
+    const cause = new Error('')
+    cause.name = ''
+    expect(wrapOperationError('IMAP fetch', cause).message).toBe('IMAP fetch failed: no detail from underlying layer')
+  })
+
+  it('stringifies a cause that is not an Error', () => {
+    expect(wrapOperationError('SMTP send', 'socket hang up').message).toBe('SMTP send failed: socket hang up')
+    expect(wrapOperationError('SMTP send', '').message).toBe('SMTP send failed: no detail from underlying layer')
   })
 })

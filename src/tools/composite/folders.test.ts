@@ -117,6 +117,52 @@ describe('folders - list', () => {
     expect(result.accounts[0].error).not.toContain('Bearer token')
   })
 
+  it('reports a non-object rejection as its string form', async () => {
+    mockListFolders.mockRejectedValueOnce('socket closed')
+
+    const result = await folders([accounts[0]!], { action: 'list' })
+
+    expect(result.accounts[0].error).toBe('socket closed')
+    expect(result.accounts[0].folders).toEqual([])
+  })
+
+  it('reads the error code out of an OAuth error object and ignores a non-object one', async () => {
+    const oauthAccount = { ...accounts[1]!, authType: 'oauth2' as const, password: '' }
+    mockListFolders
+      .mockRejectedValueOnce(Object.assign(new Error('refresh failed'), { oauthError: { error: 'invalid_grant' } }))
+      .mockRejectedValueOnce(Object.assign(new Error('refresh failed'), { oauthError: 'invalid_grant' }))
+
+    const fromObject = await folders([oauthAccount], { action: 'list' })
+    const fromString = await folders([oauthAccount], { action: 'list' })
+
+    expect(fromObject.accounts[0].error).toBe('OAuth/IMAP authentication failed or was rejected (invalid_grant)')
+    expect(fromString.accounts[0].error).toBe('refresh failed')
+  })
+
+  it('reports an OAuth authentication failure that carries no server detail', async () => {
+    mockListFolders.mockRejectedValueOnce(Object.assign(new Error('failed'), { authenticationFailed: true }))
+
+    const result = await folders([{ ...accounts[1]!, authType: 'oauth2', password: '' }], { action: 'list' })
+
+    expect(result.accounts[0].error).toBe('OAuth/IMAP authentication failed or was rejected')
+  })
+
+  it('reports a password authentication failure that carries no server detail', async () => {
+    mockListFolders.mockRejectedValueOnce(Object.assign(new Error('failed'), { authenticationFailed: true }))
+
+    const result = await folders([accounts[0]!], { action: 'list' })
+
+    expect(result.accounts[0].error).toBe('IMAP authentication failed - check the password or app password')
+  })
+
+  it('falls back to the string form of an error object without a text message', async () => {
+    mockListFolders.mockRejectedValueOnce({ message: 42, toString: () => 'imap error 42' })
+
+    const result = await folders([accounts[0]!], { action: 'list' })
+
+    expect(result.accounts[0].error).toBe('imap error 42')
+  })
+
   it('throws when account not found', async () => {
     await expect(folders(accounts, { action: 'list', account: 'nonexistent@test.com' })).rejects.toThrow(
       'Account not found'

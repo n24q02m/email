@@ -783,6 +783,34 @@ describe('deviceCodeAuth', () => {
     expect(callCount).toBeGreaterThanOrEqual(3)
   }, 15_000)
 
+  it('waits the default 5s between polls when the device code response has no interval', async () => {
+    vi.useFakeTimers()
+    try {
+      mockFetch
+        .mockResolvedValueOnce({
+          json: async () => ({
+            device_code: 'dc-no-interval',
+            user_code: 'NO-INTERVAL',
+            verification_uri: 'https://microsoft.com/devicelogin',
+            expires_in: 900
+          })
+        })
+        .mockResolvedValueOnce({
+          json: async () => ({ access_token: 'at-default-interval', refresh_token: 'rt', expires_in: 3600 })
+        })
+
+      const pending = deviceCodeAuth('interval@outlook.com', 'cid')
+      await vi.advanceTimersByTimeAsync(4_999)
+      expect(mockFetch).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(1)
+
+      expect((await pending).accessToken).toBe('at-default-interval')
+      expect(mockFetch).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('uses default client ID when none provided', async () => {
     delete process.env.OUTLOOK_CLIENT_ID
 
@@ -977,6 +1005,16 @@ describe('deleteStoredTokens', () => {
     expect(deleted.sort()).toEqual(['a@outlook.com', 'b@outlook.com'])
     const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written).toEqual({})
+  })
+
+  it('treats a token file that is not a valid token store as empty', async () => {
+    mockExistsSync.mockReturnValue(true)
+    mockReadFileSync.mockReturnValue(JSON.stringify({ 'user@outlook.com': 'not-a-token' }))
+
+    const deleted = await deleteStoredTokens('user@outlook.com')
+
+    expect(deleted).toEqual([])
+    expect(mockWriteFileSync).not.toHaveBeenCalled()
   })
 
   it('treats a corrupted token file as empty (nothing to delete)', async () => {
@@ -1279,6 +1317,43 @@ describe('initiateOutlookDeviceCode', () => {
 
     await expect(initiateOutlookDeviceCode('bad@outlook.com')).rejects.toThrow('Unknown client ID')
   })
+
+  it('polls every 5s by default, backs off on slow_down and gives up when the user declines', async () => {
+    vi.useFakeTimers()
+    try {
+      mockFetch
+        .mockResolvedValueOnce({
+          json: async () => ({
+            device_code: 'dc-bg',
+            user_code: 'BG-123',
+            verification_uri: 'https://microsoft.com/devicelogin',
+            expires_in: 900,
+            interval: 0
+          })
+        })
+        .mockResolvedValueOnce({ json: async () => ({ error: 'authorization_pending' }) })
+        .mockResolvedValueOnce({ json: async () => ({ error: 'slow_down' }) })
+        .mockResolvedValueOnce({ json: async () => ({ error: 'authorization_declined' }) })
+
+      const result = await initiateOutlookDeviceCode('bg@outlook.com')
+      expect(result.interval).toBe(5)
+
+      await vi.advanceTimersByTimeAsync(5_000) // authorization_pending
+      await vi.advanceTimersByTimeAsync(5_000) // slow_down: the next wait is 10s
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+      await vi.advanceTimersByTimeAsync(5_000)
+      expect(mockFetch).toHaveBeenCalledTimes(3)
+      expect(_getPendingAuths().has('bg@outlook.com')).toBe(true)
+
+      await vi.advanceTimersByTimeAsync(5_000) // authorization_declined
+      expect(mockFetch).toHaveBeenCalledTimes(4)
+      expect(_getPendingAuths().has('bg@outlook.com')).toBe(false)
+      expect(mockWriteFileSync).not.toHaveBeenCalled()
+      expect(setState).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
   it('throws if email is missing', async () => {
     await expect(initiateOutlookDeviceCode('')).rejects.toThrow('Email is required')
   })
@@ -1454,6 +1529,12 @@ describe('loadOutlookEmails file store', () => {
     expect((await loadOutlookEmails()).sort()).toEqual(['a@outlook.com', 'b@hotmail.com'])
   })
 
+  it('returns an empty list when the token file is not valid JSON', async () => {
+    mockReadFile.mockResolvedValue('{not json')
+
+    expect(await loadOutlookEmails()).toEqual([])
+  })
+
   it('returns an empty list when the single-user token file cannot be read', async () => {
     mockReadFile.mockRejectedValue({ code: 'EACCES' })
 
@@ -1523,6 +1604,23 @@ describe('getOutlookTenant', () => {
   it('rejects a value carrying path separators so it cannot reshape the endpoint URL', () => {
     process.env.OUTLOOK_TENANT = '../../evil'
     expect(getOutlookTenant('consumers')).toBe('consumers')
+  })
+
+  it('warns once per malformed value, not on every call', () => {
+    const warn = vi.spyOn(console, 'error').mockImplementation(() => {})
+    try {
+      process.env.OUTLOOK_TENANT = 'tenant/one'
+      expect(getOutlookTenant('consumers')).toBe('consumers')
+      expect(getOutlookTenant('common')).toBe('common')
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(warn).toHaveBeenCalledWith('[email] Ignoring malformed OUTLOOK_TENANT; falling back to "consumers".')
+
+      process.env.OUTLOOK_TENANT = 'tenant/two'
+      getOutlookTenant('consumers')
+      expect(warn).toHaveBeenCalledTimes(2)
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 

@@ -136,6 +136,18 @@ describe('parseAccountsFile', () => {
     )
   })
 
+  it('rejects an empty optional host and an account table with a blank id', () => {
+    expectInvalid(
+      () => parseAccountsFile('[accounts.a]\nemail = "a@x.com"\npassword = "p"\nimap_host = " "\n', '/tmp/a.toml'),
+      'accounts.a: imap_host must be a non-empty string'
+    )
+    expectInvalid(
+      () => parseAccountsFile('[accounts." "]\nemail = "a@x.com"\npassword = "p"\n', '/tmp/a.toml'),
+      'has an empty id',
+      '[accounts.work]'
+    )
+  })
+
   it('rejects out-of-range ports and ports without a host', () => {
     expectInvalid(
       () =>
@@ -264,6 +276,10 @@ describe('resolveAccountsFilePath', () => {
     expect(resolveAccountsFilePath({ [ACCOUNTS_FILE_ENV]: 'off' }, HOME)).toBeNull()
     expect(resolveAccountsFilePath({ [ACCOUNTS_FILE_ENV]: 'none' }, HOME)).toBeNull()
     expect(resolveAccountsFilePath({ [ACCOUNTS_FILE_ENV]: '  OFF  ' }, HOME)).toBeNull()
+  })
+
+  it('refuses a path carrying a NUL byte', () => {
+    expectInvalid(() => resolveAccountsFilePath({ [ACCOUNTS_FILE_ENV]: 'accounts\0.toml' }, HOME), 'NUL byte')
   })
 
   it('treats an empty value as unset', () => {
