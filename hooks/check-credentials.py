@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""PreToolUse hook: hint when better-email-mcp credentials are not configured.
+"""PreToolUse hook: hint when email credentials are not configured.
 
 Non-blocking hint only. The server handles the unconfigured state itself: its
 tools return instructions to set EMAIL_CREDENTIALS (or EMAIL_USER +
@@ -37,7 +37,7 @@ except ImportError:
             sys.exit(2)
         return data
 
-SERVER_NAME = "better-email-mcp"
+SERVER_NAME = "email"
 CREDENTIAL_KEYS = ["EMAIL_CREDENTIALS"]
 EXEMPT_SUFFIXES = ("__setup", "__help", "__config")
 
@@ -78,7 +78,7 @@ def main() -> None:
         json.dumps(
             {
                 "message": (
-                    "better-email-mcp: credentials not yet configured. "
+                    f"{SERVER_NAME}: credentials not yet configured. "
                     "The server will provide setup instructions."
                 ),
             }

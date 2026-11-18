@@ -55,7 +55,8 @@ Smoke without a mailbox: `email config-tool status --json` and `email help messa
 
 | Variable | Required | Meaning |
 |---|---|---|
-| `EMAIL_CREDENTIALS` | stdio (or the `EMAIL_USER` pair) | one account as `email:app-password`, several comma-separated, or `email:password:imap_host[:imap_port]` for a custom host |
+| `EMAIL_ACCOUNTS_FILE` | stdio (or `EMAIL_CREDENTIALS` / the `EMAIL_USER` pair) | TOML accounts file with one `[accounts.<id>]` table per mailbox; default `<base>/.email/accounts.toml` when that file exists; `off`, `none`, `false` or `0` disables the lookup. A file that is found wins over the env vars |
+| `EMAIL_CREDENTIALS` | stdio (or the accounts file / the `EMAIL_USER` pair) | one account as `email:app-password`, several comma-separated, or `email:password:imap_host[:imap_port]` for a custom host |
 | `EMAIL_USER` + `EMAIL_APP_PASSWORD` | alternative | single-account pair, merged into `EMAIL_CREDENTIALS` at boot |
 | `EMAIL_DATA_DIR` | no | base directory for this server's own files (default: the home directory) |
 | `TRANSPORT_MODE` / `MCP_TRANSPORT` | no | set to `http` for the HTTP transport (or pass `--http`) |
@@ -72,9 +73,9 @@ Smoke without a mailbox: `email config-tool status --json` and `email help messa
 | `OUTLOOK_EXTRA_DOMAINS` | no | extra domains routed to OAuth instead of a password |
 | `OUTLOOK_EMAIL` | no | fallback address when the device-code response omits it |
 
-Credential resolution at startup, in order: `EMAIL_CREDENTIALS`; the `EMAIL_USER`/`EMAIL_APP_PASSWORD` pair; the encrypted `config.enc` left by an earlier install (read-only, through hull's store under the fixed key `better-email-mcp`); saved Outlook OAuth tokens; otherwise `awaiting_setup`. Multiple accounts are comma-separated in one `EMAIL_CREDENTIALS` value, and a tool call selects one with the `account` parameter -- an ambiguous or unknown account is an error with the configured addresses listed, never a silent fallback to the first account.
+Credential resolution at startup, in order: the accounts file (`EMAIL_ACCOUNTS_FILE`, or `<base>/.email/accounts.toml` when present; validated at boot, so a malformed file fails the start); `EMAIL_CREDENTIALS`; the `EMAIL_USER`/`EMAIL_APP_PASSWORD` pair; the encrypted `config.enc` left by an earlier install (read-only, through hull's store under the fixed key `better-email-mcp`); saved Outlook OAuth tokens; otherwise `awaiting_setup`. Multiple accounts are rows of the accounts file or comma-separated in one `EMAIL_CREDENTIALS` value, and a tool call selects one with the `account` parameter -- an ambiguous or unknown account is an error with the configured addresses listed, never a silent fallback to the first account.
 
-Outlook/Hotmail/Live accounts use the OAuth2 device-code flow: `email auth [outlook] <address>` prints a code and a Microsoft URL, then saves tokens to `<base>/.email/tokens.json` (mode 0600 on POSIX); with `--user <namespace>` they go to `<base>/.email/users/<namespace>/tokens.json`. `email logout [<address>]` clears one or all of them. Every other provider uses an app password in `EMAIL_CREDENTIALS`.
+Outlook/Hotmail/Live accounts use the OAuth2 device-code flow: `email auth [outlook] <address>` prints a code and a Microsoft URL, then saves tokens to `<base>/.email/tokens.json` (mode 0600 on POSIX); with `--user <namespace>` they go to `<base>/.email/users/<namespace>/tokens.json`. `email logout [<address>]` clears one or all of them. This holds in stdio and HTTP alike: a password given for an Outlook address is ignored unless the account sets a custom IMAP host, and a stdio install lists the address in `EMAIL_CREDENTIALS` (the bare address is enough). Every other provider uses an app password in the accounts file or `EMAIL_CREDENTIALS`.
 
 `EMAIL_DATA_DIR` replaces the base directory outright, which is how a container mounts one volume (`EMAIL_DATA_DIR=/data` puts tokens at `/data/.email/tokens.json`; the image also sets `HOME=/data`). A relative value is resolved under the home directory and must stay inside it; an absolute value is an explicit operator choice and is taken as-is; empty means "use the default". Files written by earlier releases under the pre-rename `.better-email-mcp` directory are copied forward at startup (`src/data-dir-migration.ts`).
 
@@ -82,7 +83,7 @@ Never commit app passwords, bearer tokens, hashes, `tokens.json`, or mailbox tra
 
 ## Transports and auth modes
 
-- **stdio** (default): one process, one credential set from the environment (or the stored config/tokens), no listener. Most providers need nothing beyond an app password.
+- **stdio** (default): one process, one credential set from the accounts file or the environment (or the stored config/tokens), no listener. Most providers need nothing beyond an app password.
 - **HTTP, `MCP_AUTH_MODE=multi`**: several users on one endpoint. hull reads the `users.toml` token table (`MCP_USERS_FILE`): each `[users.<id>]` row holds a `token_hash`, a `namespace`, `enabled`, and an optional `[users.<id>.limits] rpm`. A request with no token or an unknown one is answered `401` (`WWW-Authenticate: Bearer`) before any tool runs; a disabled user gets `403`, a user over its rate `429`. Every tool call resolves the caller's own mailboxes from `<base>/.email/users/<namespace>/accounts.toml` (same schema as `EMAIL_ACCOUNTS_FILE`) plus the Outlook grants in `<base>/.email/users/<namespace>/tokens.json`. The server-wide sources (`EMAIL_ACCOUNTS_FILE`, `EMAIL_CREDENTIALS`, `EMAIL_USER`, the legacy `config.enc`) are never served in this mode; the server warns at startup when an accounts file or the credential env vars are set. Account ids only need to be unique inside one namespace; folder and token caches are keyed per namespace. A namespace is one path segment (`[A-Za-z0-9][A-Za-z0-9_-]{0,63}`); anything else is refused.
 - **HTTP, `MCP_AUTH_MODE=token`** (or unset with a hash): one principal. One shared bearer token, supplied only as its scrypt hash in `MCP_AUTH_TOKEN_HASH` (or `EMAIL_MCP_TOKEN_HASH`); clients send `Authorization: Bearer <token>`. Accounts are resolved once at startup from the same environment as stdio; whoever holds the token can act on every configured mailbox.
 - **HTTP, no auth**: only on a loopback bind. With no mode and no hash the server refuses to start on any other bind address, so a container that binds `0.0.0.0` cannot come up without a token or a users file.
@@ -123,14 +124,14 @@ Rollback is forward: revert or fix the source commit and dispatch the pipeline a
 
 1. Decide the transport (stdio or HTTP) and, for HTTP, the auth mode: `token` for one principal, `multi` for several users with separate mailboxes.
 2. Install with the documented command, then run `bun run check` and `bun run test`.
-3. Supply credentials: `EMAIL_CREDENTIALS` (app password or custom-host form), or `email auth outlook <address>` for a Microsoft mailbox.
+3. Supply credentials: an accounts file (`EMAIL_ACCOUNTS_FILE`), `EMAIL_CREDENTIALS` (app password or custom-host form), or `email auth outlook <address>` for a Microsoft mailbox (for stdio, also list that address in `EMAIL_CREDENTIALS`).
 4. Exercise one representative read against a test mailbox (`email messages search --query UNREAD --limit 5 --json`), then one `folders list`.
 5. For HTTP, mint the hash with `email token hash`, confirm the server refuses to start off loopback without auth, and confirm a missing or wrong token gets `401`. In `multi` mode also confirm that two users' `config status` each list only their own mailboxes.
 6. Review the exact CI run before merging, and the exact release run before using a beta artifact.
 
 ## Triage
 
-- stdio exits asking for credentials: neither `EMAIL_CREDENTIALS` nor the `EMAIL_USER`/`EMAIL_APP_PASSWORD` pair is set and no stored config or token was found. Set one, or run `email auth outlook <address>`.
+- stdio exits asking for credentials: no accounts file was found (`EMAIL_ACCOUNTS_FILE`, or `<base>/.email/accounts.toml`), neither `EMAIL_CREDENTIALS` nor the `EMAIL_USER`/`EMAIL_APP_PASSWORD` pair is set, and no stored config or token was found. Set one, or run `email auth outlook <address>`.
 - HTTP exits on start: non-loopback bind with neither `MCP_AUTH_MODE=multi` nor a token hash (`MCP_AUTH_TOKEN_HASH` / `EMAIL_MCP_TOKEN_HASH`). Mint the hash and pass the hash only.
 - A multi-user caller gets "No email accounts are configured for user namespace": the namespace has no `users/<namespace>/accounts.toml` and no saved Outlook grant. Provision it host-side; the server-wide accounts are never a fallback.
 - Login failures: distinguish a wrong app password, a provider that rejects basic auth (use the OAuth flow), and a mailbox that requires a custom host/port (`email:password:imap_host:imap_port`).

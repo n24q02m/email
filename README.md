@@ -55,7 +55,7 @@ mcp-name: io.github.n24q02m/email
 - [Tools](#tools)
 - [Comparison](#comparison)
 - [Remote (HTTP Mode)](#remote-http-mode)
-- [Outlook OAuth Device Code (HTTP mode)](#outlook-oauth-device-code-http-mode)
+- [Outlook OAuth Device Code](#outlook-oauth-device-code)
 - [Configuration](#configuration)
 - [Security](#security)
 - [Build from Source](#build-from-source)
@@ -79,7 +79,7 @@ mcp-name: io.github.n24q02m/email
 
 ## Install
 
-The server runs in two modes: **stdio** (default, single-user, credentials from env vars) and **HTTP** (opt-in: one shared bearer token, or several users with separate mailboxes from a `users.toml` token table). For stdio, add it to your MCP client config:
+The server runs in two modes: **stdio** (default, single-user, credentials from env vars or an accounts file) and **HTTP** (opt-in: one shared bearer token, or several users with separate mailboxes from a `users.toml` token table). For stdio, add it to your MCP client config:
 
 ```jsonc
 {
@@ -104,7 +104,7 @@ an alias of `email`.
 
 Multiple accounts are comma-separated: `user1@gmail.com:pass1,user2@outlook.com:pass2`, or listed in an [accounts file](#accounts-file-single-and-multi-account). See [Configuration](#configuration) for all env vars, and [Remote (HTTP Mode)](#remote-http-mode) to run a hosted server.
 
-Most providers use an **App Password** (no OAuth setup); Outlook/Hotmail/Live use a bundled OAuth device-code flow in HTTP mode. Settings (IMAP/SMTP host, port) are auto-discovered from the email domain.
+Most providers use an **App Password** (no OAuth setup); Outlook/Hotmail/Live use a bundled [OAuth device-code flow](#outlook-oauth-device-code) in both stdio and HTTP mode. Settings (IMAP/SMTP host, port) are auto-discovered from the email domain.
 
 ### Install matrix
 
@@ -125,7 +125,7 @@ The package ships one binary, `email` (run via `npx @n24q02m/email`), also insta
 
 | Invocation | Description |
 |:-----------|:------------|
-| `email` | Start the MCP server over **stdio** (default). Reads credentials from `EMAIL_CREDENTIALS`, or from `EMAIL_USER` + `EMAIL_APP_PASSWORD` |
+| `email` | Start the MCP server over **stdio** (default). Reads credentials from the [accounts file](#accounts-file-single-and-multi-account), `EMAIL_CREDENTIALS`, or `EMAIL_USER` + `EMAIL_APP_PASSWORD`, and exits when none of them is set |
 | `email --http` | Start the server in **HTTP** mode (auth chosen by `MCP_AUTH_MODE`, see [Remote (HTTP Mode)](#remote-http-mode)). Equivalent to `MCP_TRANSPORT=http` or `TRANSPORT_MODE=http` |
 | `email auth [outlook] <email> [--client-id=<id>] [--user=<namespace>]` | Authenticate an Outlook/Hotmail/Live account via OAuth2 Device Code flow. Tokens are saved to `~/.email/tokens.json`, or with `--user` to that HTTP multi-user namespace (`~/.email/users/<namespace>/tokens.json`). The `outlook` provider positional is optional (email has a single OAuth2 provider); `--client-id` overrides `OUTLOOK_CLIENT_ID` for a self-hosted Azure AD app |
 | `email logout [<email>] [--user=<namespace>]` | Clear the locally stored Outlook token(s), of one multi-user namespace with `--user`. Omit `<email>` to clear every stored token |
@@ -318,7 +318,7 @@ The repository ships `docker-compose.http.yml`, which builds the `http` image ta
 publishes it on host loopback only (`127.0.0.1:8082`):
 
 ```bash
-export MCP_AUTH_TOKEN_HASH='scrypt$...'   # required; see the note above
+export EMAIL_MCP_TOKEN_HASH='scrypt$...'  # required; the compose file passes the hash under this older name
 export EMAIL_CREDENTIALS='you@gmail.com:app-password'
 docker compose -f docker-compose.http.yml up
 ```
@@ -337,7 +337,7 @@ Outlook/Hotmail/Live accounts use OAuth2 device-code. Run `email auth outlook <a
 
 OAuth uses the bundled public Azure client (`d56f8c71-9f7c-43f4-9934-be29cb6e77b0`, Thunderbird-pattern) -- no user-side Azure registration needed.
 
-In **stdio mode**, Outlook accounts use an **App Password** instead (Outlook Account Settings → Security → Advanced security options → App passwords).
+The same flow applies in **stdio mode**: an Outlook/Hotmail/Live address (or a domain listed in `OUTLOOK_EXTRA_DOMAINS`) always signs in with these tokens, and a password given for it is ignored unless the account sets a custom IMAP host. After `email auth outlook <address>`, list the address in `EMAIL_CREDENTIALS`; the bare address is enough (`EMAIL_CREDENTIALS=user@outlook.com`).
 
 ## Configuration
 
@@ -348,10 +348,10 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `EMAIL_ACCOUNTS_FILE` | Alternative (stdio) | `~/.email/accounts.toml` when it exists | Path to the [accounts file](#accounts-file-single-and-multi-account). `off`, `none`, `false` or `0` disables file lookup entirely. When a file is found it wins over `EMAIL_CREDENTIALS` and `EMAIL_USER` |
 | `EMAIL_CREDENTIALS` | Alternative (stdio) | - | Email credentials, `email:app-password` per account, comma-separated for multi-account. Optional custom IMAP host/port: `email:password:imap_host:imap_port` |
 | `EMAIL_USER` | Alternative (stdio, single-account) | - | Email address. Used with `EMAIL_APP_PASSWORD` as a per-field alternative to `EMAIL_CREDENTIALS`; merged into `EMAIL_CREDENTIALS` at boot |
-| `EMAIL_APP_PASSWORD` | Alternative (stdio, single-account) | - | App password (Gmail/Yahoo/iCloud) or Outlook App Password; used with `EMAIL_USER` |
+| `EMAIL_APP_PASSWORD` | Alternative (stdio, single-account) | - | App password (Gmail/Yahoo/iCloud and other password providers); used with `EMAIL_USER`. Outlook/Hotmail/Live addresses use [OAuth](#outlook-oauth-device-code) instead |
 | `EMAIL_DATA_DIR` | No | `$HOME` | Base directory for this server's own files. Saved Outlook tokens live in `<dir>/.email/tokens.json`, so the default is `~/.email/tokens.json` (the Docker image sets `HOME=/data`); a file an earlier release wrote under `<dir>/.better-email-mcp/` is copied forward on startup. A relative value is resolved under `$HOME` and must stay inside it; use an absolute path to point at a mounted volume |
 | `PORT` | No | `0` (OS-assigned) | Server port (http mode); set explicitly (e.g. `8080`) to bind a fixed port |
-| `HOST` | No | - | Bind address (http mode) |
+| `HOST` | No | `0.0.0.0` | Bind address (http mode) |
 | `MCP_AUTH_MODE` | No (http) | - | `token`, `multi` or `no-auth`. Unset: a token hash selects `token`; without one HTTP runs unauthenticated only on loopback and refuses any other bind |
 | `MCP_AUTH_TOKEN_HASH` | No (http `token`; required when not bound to loopback) | - | scrypt hash of the shared bearer token, minted with `email token hash`. `EMAIL_MCP_TOKEN_HASH` is the older name and still works |
 | `MCP_RPM` | No (http `token`) | - | Per-minute request cap for the shared token |
