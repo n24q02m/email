@@ -85,8 +85,9 @@ class TestCheckCredentials(unittest.TestCase):
         mock_exit.assert_called_with(0)
         output = json.loads(mock_stdout.getvalue())
         self.assertIn("message", output)
-        self.assertIn(
-            "better-email-mcp: credentials not yet configured", output["message"]
+        self.assertTrue(
+            output["message"].startswith("email: credentials not yet configured"),
+            output["message"],
         )
 
     @patch.dict(os.environ, {"EMAIL_CREDENTIALS": "some_creds"}, clear=True)

@@ -3,7 +3,7 @@
 Manage email credential setup and runtime configuration.
 
 ### Description
-This tool reports the status of your email credentials, explains how to set them up, resets saved configuration, re-checks credential state after external changes, and manages runtime caches. Credentials come from environment variables, the legacy encrypted config (read-only), or saved Outlook OAuth tokens. There is no web credential form; set credentials with env vars or the `email auth outlook <address>` CLI command.
+This tool reports the status of your email credentials, explains how to set them up, resets saved configuration, re-checks credential state after external changes, and manages runtime caches. Credentials come from the accounts file (`EMAIL_ACCOUNTS_FILE`, or `accounts.toml` in the data directory), environment variables, the legacy encrypted config (read-only), or saved Outlook OAuth tokens. There is no web credential form; set credentials with an accounts file, env vars, or the `email auth outlook <address>` CLI command.
 
 ### Actions
 

@@ -59,7 +59,7 @@ src/
 
 ## Env vars
 
-- **stdio mode** (default): `EMAIL_CREDENTIALS` (bat buoc). Format: `user@gmail.com:app-password`
+- **stdio mode** (default): accounts file (`EMAIL_ACCOUNTS_FILE`, hoac `~/.email/accounts.toml` neu co), `EMAIL_CREDENTIALS`, hoac cap `EMAIL_USER` + `EMAIL_APP_PASSWORD` -- can it nhat mot nguon, khong co thi exit 1 (`init-server.ts:initServer`). Format `EMAIL_CREDENTIALS`: `user@gmail.com:app-password`
   - Multi-account: `user1@gmail.com:pass1,user2@outlook.com:pass2`
   - Custom IMAP host: `user@custom.com:password:imap.custom.com`
   - Custom IMAP host + port: `user@custom.com:password:imap.custom.com:1993`
@@ -100,9 +100,9 @@ PSR v10 (workflow_dispatch) -> npm + Docker (amd64+arm64) + GHCR + MCP Registry.
 
 ## Modes
 
-Two transports, selected in `init-server.ts:52-53`. There is no `MCP_MODE` env var; the old `remote-relay` / `local-relay` distinction was removed (see `transports/http.ts:5`).
+Two transports, selected by `isHttp` in `init-server.ts:initServer`. There is no `MCP_MODE` env var; the old `remote-relay` / `local-relay` distinction was removed in v1.42.0 (#1202).
 
-- **stdio (default)**: MCP SDK `StdioServerTransport` directly. Reads credentials from `EMAIL_CREDENTIALS` OR `EMAIL_USER` + `EMAIL_APP_PASSWORD`. Outlook accounts use an App Password in this mode.
+- **stdio (default)**: MCP SDK `StdioServerTransport` directly. Reads credentials from the accounts file (`EMAIL_ACCOUNTS_FILE`, or `<data dir>/accounts.toml` when present), `EMAIL_CREDENTIALS`, OR `EMAIL_USER` + `EMAIL_APP_PASSWORD`, and exits when none is set. Outlook/Hotmail/Live accounts use OAuth2 in this mode too (`config.ts:buildAccount`): run `email auth outlook <address>`, then list the address in `EMAIL_CREDENTIALS` (the bare address is enough); a password is used only with a custom IMAP host.
 - **http (opt-in, self-hosted)**: enabled via `--http`, `MCP_TRANSPORT=http`, or `TRANSPORT_MODE=http`. Auth mode `token`: one shared bearer token (`MCP_AUTH_TOKEN_HASH` / `EMAIL_MCP_TOKEN_HASH`), accounts from `EMAIL_CREDENTIALS` or `email auth outlook <address>`. Auth mode `multi`: several users from hull `users.toml`, accounts resolved per tool call for the caller's namespace (`registerTools(server, [], { resolveAccounts: loadCallerConfig })`). There is no relay form. The project no longer operates a public n24q02m HTTP deployment.
 
 ## Known bugs (phat hien 2026-04-18 E2E)
