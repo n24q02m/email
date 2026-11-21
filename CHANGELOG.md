@@ -2,6 +2,68 @@
 
 <!-- version list -->
 
+## v1.45.0-beta.1 (2026-11-21)
+
+### Bug Fixes
+
+- Align email docs with the stdio credential and transport code
+  ([#1279](https://github.com/n24q02m/email/pull/1279),
+  [`cd47883`](https://github.com/n24q02m/email/commit/cd4788388c2ab51c2bc6bc72a350965496644172))
+
+- Drop the leftover relay subcommand so it takes the unknown-subcommand path
+  ([#1277](https://github.com/n24q02m/email/pull/1277),
+  [`5e98647`](https://github.com/n24q02m/email/commit/5e98647470dcef64ea03f25d81f2d741ede3092f))
+
+- Drop the Renovate bypass and the update rule from the main ruleset
+  ([#1276](https://github.com/n24q02m/email/pull/1276),
+  [`f624e52`](https://github.com/n24q02m/email/commit/f624e520f7055115a1187a2af05db896807221a0))
+
+- Give the multi-user HTTP suite room for per-request token hashing
+  ([#1278](https://github.com/n24q02m/email/pull/1278),
+  [`6d01dad`](https://github.com/n24q02m/email/commit/6d01dadedad35fb4ffd768d9ffb897f3cc8eb16a))
+
+- Give the multi-user HTTP suite room for per-request token hashing
+  ([#1277](https://github.com/n24q02m/email/pull/1277),
+  [`5e98647`](https://github.com/n24q02m/email/commit/5e98647470dcef64ea03f25d81f2d741ede3092f))
+
+- Hold bun installs to the Renovate release age
+  ([#1285](https://github.com/n24q02m/email/pull/1285),
+  [`ab36094`](https://github.com/n24q02m/email/commit/ab36094f1d557e305c266c00855077d4d6f662e9))
+
+- Let Renovate digest updates clear the release-age hold
+  ([#1284](https://github.com/n24q02m/email/pull/1284),
+  [`2fb92c5`](https://github.com/n24q02m/email/commit/2fb92c52c7e722fecc234adaaeae77d0217bd472))
+
+- Raise the branch coverage gate to 95% and cover the paths it would miss
+  ([#1278](https://github.com/n24q02m/email/pull/1278),
+  [`6d01dad`](https://github.com/n24q02m/email/commit/6d01dadedad35fb4ffd768d9ffb897f3cc8eb16a))
+
+- Rerun the pull request checks on the relay removal
+  ([#1277](https://github.com/n24q02m/email/pull/1277),
+  [`5e98647`](https://github.com/n24q02m/email/commit/5e98647470dcef64ea03f25d81f2d741ede3092f))
+
+- Wait for the package registry to serve the release before publishing to the MCP Registry
+  ([#1275](https://github.com/n24q02m/email/pull/1275),
+  [`917fb14`](https://github.com/n24q02m/email/commit/917fb145cc7be6f6d552a87b63564e2a966b6b1d))
+
+- **deps**: Lock file maintenance ([#1283](https://github.com/n24q02m/email/pull/1283),
+  [`f5602ea`](https://github.com/n24q02m/email/commit/f5602ea19c5b0ee236d8319050dc6a89032abbcc))
+
+- **deps**: Lock file maintenance ([#1282](https://github.com/n24q02m/email/pull/1282),
+  [`687fcde`](https://github.com/n24q02m/email/commit/687fcde6b326f9778e8d0e1b3b26f8f796143cb4))
+
+- **deps**: Update minor dependencies ([#1281](https://github.com/n24q02m/email/pull/1281),
+  [`9c469d9`](https://github.com/n24q02m/email/commit/9c469d98b2c96c8c5230c55214ffccfa4c812712))
+
+- **deps**: Update patch dependencies ([#1280](https://github.com/n24q02m/email/pull/1280),
+  [`70da1db`](https://github.com/n24q02m/email/commit/70da1dbb48c8eef9cb25cac578e8a06b428cab4f))
+
+### Features
+
+- Sync cross-promo section ([#1286](https://github.com/n24q02m/email/pull/1286),
+  [`2094642`](https://github.com/n24q02m/email/commit/20946420de1db669f658e38d0fab3751951da9d7))
+
+
 ## v1.44.0 (2026-11-17)
 
 ### Bug Fixes
