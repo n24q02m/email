@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from '../src/tools/helpers/config.js'
 
+// Tests swap in ESEARCH replies (`{ partial }`, `false`, `{}`) as well as UID arrays,
+// so the fake search resolves to whatever reply the test under way hands back.
+type FakeSearch = (
+  criteria: { uid?: unknown },
+  options: { uid?: boolean; returnOptions?: Array<{ partial?: string }> } | undefined
+) => Promise<unknown>
+
 const {
   fakeMailbox,
   messageCount,
@@ -60,7 +67,7 @@ const {
     capabilities: new Map<string, boolean | number>(),
     enabled: new Set<string>(),
     mailbox: { uidNext: messageCount + 1 },
-    search: vi.fn(boundedWindowSearch),
+    search: vi.fn<FakeSearch>(boundedWindowSearch),
     fetchAll: vi.fn(defaultFetchAll)
   }
 

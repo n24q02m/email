@@ -1116,8 +1116,7 @@ describe.skipIf(E2E_SETUP === 'http')('HTTP Transport — Local Server', () => {
     it('GET /health should return ok', async () => {
       const res = await fetch(`${HTTP_URL}/health`)
       expect(res.status).toBe(200)
-      const body = await res.json()
-      expect(body.status).toBe('ok')
+      expect(await res.json()).toMatchObject({ status: 'ok' })
     })
   })
 })
