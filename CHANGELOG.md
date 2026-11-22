@@ -2,6 +2,26 @@
 
 <!-- version list -->
 
+## v1.45.1-beta.2 (2026-11-22)
+
+### Bug Fixes
+
+- Read the type-check config from the script and bound build/ to src and scripts
+  ([#1289](https://github.com/n24q02m/email/pull/1289),
+  [`a1064b3`](https://github.com/n24q02m/email/commit/a1064b31adbce12e3f4a679d59ab46e73a176335))
+
+- Refuse test files in the legacy final-note npm publish too
+  ([#1290](https://github.com/n24q02m/email/pull/1290),
+  [`1cbe88d`](https://github.com/n24q02m/email/commit/1cbe88d425a27970d55f0d75cb5003e8483fed9b))
+
+- Refuse to publish an npm package that ships test files
+  ([#1290](https://github.com/n24q02m/email/pull/1290),
+  [`1cbe88d`](https://github.com/n24q02m/email/commit/1cbe88d425a27970d55f0d75cb5003e8483fed9b))
+
+- Type-check the tests directory ([#1289](https://github.com/n24q02m/email/pull/1289),
+  [`a1064b3`](https://github.com/n24q02m/email/commit/a1064b31adbce12e3f4a679d59ab46e73a176335))
+
+
 ## v1.45.1-beta.1 (2026-11-22)
 
 ### Bug Fixes
