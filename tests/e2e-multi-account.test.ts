@@ -24,6 +24,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 // ---------------------------------------------------------------------------
@@ -182,6 +183,12 @@ async function openSession(env: Record<string, string>): Promise<Session> {
   return { client, transport, stderr: () => stderr }
 }
 
+// `callTool` parses the reply with `CallToolResultSchema`, yet its return type also
+// carries the legacy `{ toolResult }` shape; parse again to get the type that was checked.
+function asToolResult(result: Awaited<ReturnType<Client['callTool']>>): ToolResult {
+  return CallToolResultSchema.parse(result)
+}
+
 function parseToolJson(result: ToolResult): unknown {
   const text = result.content.map((part) => part.text ?? '').join('\n')
   const match = text.match(/\{[\s\S]*\}/)
@@ -259,10 +266,12 @@ afterAll(async () => {
 
 describe('single account mode over stdio', () => {
   it('reports mode single with the one configured account', async () => {
-    const result: ToolResult = await singleSession.client.callTool({
-      name: 'config',
-      arguments: { action: 'status' }
-    })
+    const result = asToolResult(
+      await singleSession.client.callTool({
+        name: 'config',
+        arguments: { action: 'status' }
+      })
+    )
 
     expect(parseToolJson(result)).toMatchObject({
       action: 'status',
@@ -273,10 +282,12 @@ describe('single account mode over stdio', () => {
   })
 
   it('resolves the only account for a single-account action without being told', async () => {
-    const result: ToolResult = await singleSession.client.callTool({
-      name: 'folders',
-      arguments: { action: 'status', folder: 'INBOX' }
-    })
+    const result = asToolResult(
+      await singleSession.client.callTool({
+        name: 'folders',
+        arguments: { action: 'status', folder: 'INBOX' }
+      })
+    )
 
     expect(parseToolJson(result)).toMatchObject({
       action: 'status',
@@ -294,10 +305,12 @@ describe('single account mode over stdio', () => {
 
 describe('multi account mode over stdio', () => {
   it('reports mode multi with both accounts', async () => {
-    const result: ToolResult = await multiSession.client.callTool({
-      name: 'config',
-      arguments: { action: 'status' }
-    })
+    const result = asToolResult(
+      await multiSession.client.callTool({
+        name: 'config',
+        arguments: { action: 'status' }
+      })
+    )
 
     expect(parseToolJson(result)).toMatchObject({
       action: 'status',
@@ -308,10 +321,12 @@ describe('multi account mode over stdio', () => {
   })
 
   it('keeps the healthy account when the other account password is wrong', async () => {
-    const result: ToolResult = await multiSession.client.callTool({
-      name: 'folders',
-      arguments: { action: 'list' }
-    })
+    const result = asToolResult(
+      await multiSession.client.callTool({
+        name: 'folders',
+        arguments: { action: 'list' }
+      })
+    )
     const listing = asRecord(parseToolJson(result))
     if (!listing) throw new Error(`folders list returned no object: ${resultText(result)}`)
 
@@ -340,10 +355,12 @@ describe('multi account mode over stdio', () => {
   })
 
   it('rejects an action that must pick one account and names the accounts', async () => {
-    const result: ToolResult = await multiSession.client.callTool({
-      name: 'messages',
-      arguments: { action: 'read', uid: 1 }
-    })
+    const result = asToolResult(
+      await multiSession.client.callTool({
+        name: 'messages',
+        arguments: { action: 'read', uid: 1 }
+      })
+    )
 
     expect(result.isError).toBe(true)
     const text = resultText(result)
