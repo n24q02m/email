@@ -2,6 +2,22 @@
 
 <!-- version list -->
 
+## v1.45.1-beta.1 (2026-11-22)
+
+### Bug Fixes
+
+- Keep compiled script tests out of the npm package
+  ([#1288](https://github.com/n24q02m/email/pull/1288),
+  [`d52c49d`](https://github.com/n24q02m/email/commit/d52c49d2bb9c1e3a2a70cc4494bc727403f79751))
+
+- Read every tsc --build spelling in the build config test
+  ([#1288](https://github.com/n24q02m/email/pull/1288),
+  [`d52c49d`](https://github.com/n24q02m/email/commit/d52c49d2bb9c1e3a2a70cc4494bc727403f79751))
+
+- **deps**: Lock file maintenance ([#1287](https://github.com/n24q02m/email/pull/1287),
+  [`0d73360`](https://github.com/n24q02m/email/commit/0d73360b6a56adfb3d08890e8c9b67af5cb2a35a))
+
+
 ## v1.45.0 (2026-11-22)
 
 
