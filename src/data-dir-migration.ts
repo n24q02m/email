@@ -28,6 +28,7 @@
 
 import type { Stats } from 'node:fs'
 import {
+  accessSync,
   chmodSync,
   closeSync,
   copyFileSync,
@@ -96,6 +97,27 @@ function legacyFileSource(fileName: string, label: string): string | null {
   const base = resolveBaseDir()
   const candidates = [join(base, V1_DATA_DIR_NAME, fileName), join(base, LEGACY_DATA_DIR_NAME, fileName)]
   for (const source of candidates) {
+    const dir = dirname(source)
+    let dirInfo: Stats
+    try {
+      dirInfo = statSync(dir)
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === 'ENOENT') continue
+      throw new StoreMigrationError(
+        dir,
+        `Cannot read the previous credential directory ${dir} (${code}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
+      )
+    }
+    if (!dirInfo.isDirectory()) continue
+    try {
+      accessSync(dir, fsConstants.R_OK | fsConstants.X_OK)
+    } catch (error) {
+      throw new StoreMigrationError(
+        dir,
+        `Cannot read the previous credential directory ${dir} (${errorCode(error)}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
+      )
+    }
     let info: Stats
     try {
       info = statSync(source)
