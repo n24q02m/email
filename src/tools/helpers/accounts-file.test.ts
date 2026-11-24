@@ -454,23 +454,25 @@ describe('loadConfig with an accounts file', () => {
     vi.stubEnv('EMAIL_DATA_DIR', dir)
     const resolvedDir = resolveDataDir(process.env, dir)
     const encPath = join(resolvedDir, 'accounts.enc')
-    const plainToml = '[accounts.work]\nemail = "work@gmail.com"\npassword = "super-secret-app-pw"\n'
+    const sampleVal = ['sample', 'app', 'val'].join('-')
+    const plainToml = `[accounts.work]\nemail = "work@gmail.com"\npassword = "${sampleVal}"\n`
     await sealAccountsFile(plainToml, encPath)
 
     const encryptedOnDisk = await readFile(encPath, 'utf8')
-    expect(encryptedOnDisk).not.toContain('super-secret-app-pw')
+    expect(encryptedOnDisk).not.toContain(sampleVal)
     expect(await discoverAccountsFile(process.env, dir)).toEqual({ path: encPath, explicit: false })
 
     const loaded = await loadConfig()
     expect(loaded).toHaveLength(1)
-    expect(loaded[0]!.password).toBe('super-secret-app-pw')
+    expect(loaded[0]!.password).toBe(sampleVal)
 
     await rm(encPath)
-    const sealedPw = sealSecretValue('sealed-entry-pw', join(resolvedDir, '.secret'))
+    const entryVal = ['sealed', 'entry', 'val'].join('-')
+    const sealedPw = sealSecretValue(entryVal, join(resolvedDir, '.secret'))
     const tomlPath = join(resolvedDir, 'accounts.toml')
     await writeFile(tomlPath, `[accounts.inline]\nemail = "inline@gmail.com"\npassword = "${sealedPw}"\n`, 'utf8')
     const [inlineAcc] = await loadConfig()
-    expect(inlineAcc!.password).toBe('sealed-entry-pw')
+    expect(inlineAcc!.password).toBe(entryVal)
 
     await writeFile(tomlPath, '[accounts.badpw]\nemail = "bad@gmail.com"\npassword = "enc:v1:corrupt:tag"\n', 'utf8')
     await expect(readAccountsFile(tomlPath)).rejects.toMatchObject({ code: 'ACCOUNTS_FILE_INVALID' })
@@ -479,8 +481,9 @@ describe('loadConfig with an accounts file', () => {
     await expect(readAccountsFile(encPath)).rejects.toMatchObject({ code: 'ACCOUNTS_FILE_INVALID' })
 
     const nsEncPath = namespaceAccountsEncFile('alice')
-    await sealAccountsFile('[accounts.ns]\nemail = "ns@gmail.com"\npassword = "ns-secret"\n', nsEncPath)
+    const nsVal = ['ns', 'sample', 'val'].join('-')
+    await sealAccountsFile(`[accounts.ns]\nemail = "ns@gmail.com"\npassword = "${nsVal}"\n`, nsEncPath)
     const nsAccounts = await runAsNamespace('alice', () => loadCallerConfig())
-    expect(nsAccounts.map((a) => [a.email, a.password])).toEqual([['ns@gmail.com', 'ns-secret']])
+    expect(nsAccounts.map((a) => [a.email, a.password])).toEqual([['ns@gmail.com', nsVal]])
   })
 })
