@@ -526,7 +526,8 @@ it with `OUTLOOK_SCOPES` so the refresh does not ask for more than was granted.
 
 - **Credential sanitization** -- Passwords never leaked in error messages
 - **App Passwords** -- Uses app-specific passwords, not regular passwords
-- **Token storage** -- Outlook OAuth tokens are written with mode 0600 on POSIX (not enforced on Windows)
+- **Token & credential encryption** -- Outlook OAuth tokens (`tokens.json`) and optional `accounts.enc` / `enc:` passwords are encrypted at rest with AES-256-GCM via `@n24q02m/hull/storage` (`.n24q02m/email/.secret`, mode `0600` on POSIX)
+- **XPIA isolation** -- External email content (`messages`, `attachments`) is wrapped in `<untrusted_email_content>` markers across both MCP tools and CLI output
 - **IMAP validation** -- Search queries validated before execution
 
 ## Build from Source
@@ -544,9 +545,9 @@ Whoever runs the server (or your OS user for stdio) can read every credential it
 
 | Mode | Storage | Encryption | Who can read your data? |
 |---|---|---|---|
-| HTTP (Docker) | Env vars (`EMAIL_CREDENTIALS`) and saved Outlook tokens in `$HOME/.email/tokens.json` (the `/data` volume) | Tokens: plain JSON, POSIX file mode 0600 | Server operator |
-| HTTP `multi` | Per user: `$HOME/.email/users/<namespace>/accounts.toml` and `tokens.json` (the `/data` volume) | Plain files, POSIX file mode 0600 for tokens | Server operator; each caller sees only its own namespace |
-| stdio | Env vars; saved Outlook tokens in `~/.email/tokens.json`; legacy `config.enc` from earlier releases is still read | Tokens: plain JSON, POSIX file mode 0600 | Only your OS user |
+| HTTP (Docker) | Env vars (`EMAIL_CREDENTIALS`) and saved Outlook tokens in `~/.n24q02m/email/tokens.json` (the `/data` volume) | Tokens: AES-256-GCM JSON envelope (`v1:`), key in `.secret` (mode 0600 on POSIX) | Server operator |
+| HTTP `multi` | Per user: `~/.n24q02m/email/users/<namespace>/accounts.toml` (or `accounts.enc`) and `tokens.json` | Tokens & `.enc` / `enc:` passwords: AES-256-GCM via `.secret` (mode 0600 on POSIX) | Server operator; each caller sees only its own namespace |
+| stdio / CLI | Env vars, `accounts.toml`/`accounts.enc`, saved Outlook tokens in `~/.n24q02m/email/tokens.json` (legacy plain files auto-upgraded on read) | Tokens & `.enc` / `enc:` passwords: AES-256-GCM via `.secret` (mode 0600 on POSIX) | Only your OS user |
 
 ## License
 
