@@ -2,6 +2,15 @@
 
 <!-- version list -->
 
+## v1.46.0-beta.2 (2026-11-24)
+
+### Features
+
+- Encrypt stored tokens and accounts and enforce CLI XPIA isolation
+  ([#1293](https://github.com/n24q02m/email/pull/1293),
+  [`f1572a2`](https://github.com/n24q02m/email/commit/f1572a279d592c4c654e354140b116f2be57851f))
+
+
 ## v1.46.0-beta.1 (2026-11-24)
 
 ### Bug Fixes
