@@ -2,6 +2,25 @@
 
 <!-- version list -->
 
+## v1.46.0-beta.1 (2026-11-24)
+
+### Bug Fixes
+
+- Include hull v0.11.0-beta.1 and node >=22.12.0 in package.json and bun.lock
+  ([#1291](https://github.com/n24q02m/email/pull/1291),
+  [`05bbc03`](https://github.com/n24q02m/email/commit/05bbc03f2aed47ff13679c1520ed24bb0b554527))
+
+- Report unreadable legacy directory before stating inner files
+  ([#1291](https://github.com/n24q02m/email/pull/1291),
+  [`05bbc03`](https://github.com/n24q02m/email/commit/05bbc03f2aed47ff13679c1520ed24bb0b554527))
+
+### Features
+
+- Migrate email state to ~/.n24q02m, add --profile flag and Node 22/24/26 CI matrix
+  ([#1291](https://github.com/n24q02m/email/pull/1291),
+  [`05bbc03`](https://github.com/n24q02m/email/commit/05bbc03f2aed47ff13679c1520ed24bb0b554527))
+
+
 ## v1.45.1 (2026-11-23)
 
 
