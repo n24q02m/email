@@ -255,7 +255,7 @@ describe('parseAccountsFile', () => {
 describe('resolveAccountsFilePath', () => {
   it('defaults to the accounts file in the data directory', () => {
     expect(resolveAccountsFilePath({}, HOME)).toEqual({
-      path: join(HOME, '.email', 'accounts.toml'),
+      path: join(HOME, '.n24q02m', 'email', 'accounts.toml'),
       explicit: false
     })
   })
@@ -284,14 +284,14 @@ describe('resolveAccountsFilePath', () => {
 
   it('treats an empty value as unset', () => {
     expect(resolveAccountsFilePath({ [ACCOUNTS_FILE_ENV]: '   ' }, HOME)).toEqual({
-      path: join(HOME, '.email', 'accounts.toml'),
+      path: join(HOME, '.n24q02m', 'email', 'accounts.toml'),
       explicit: false
     })
   })
 
   it('follows EMAIL_DATA_DIR for the default path', () => {
     expect(resolveAccountsFilePath({ EMAIL_DATA_DIR: join(HOME, 'data') }, HOME)?.path).toBe(
-      join(HOME, 'data', '.email', 'accounts.toml')
+      join(HOME, 'data', '.n24q02m', 'email', 'accounts.toml')
     )
   })
 })
@@ -312,8 +312,8 @@ describe('discoverAccountsFile / readAccountsFile', () => {
   })
 
   it('finds the default file once it exists', async () => {
-    const path = join(dir, '.email', 'accounts.toml')
-    await mkdir(join(dir, '.email'), { recursive: true })
+    const path = join(dir, '.n24q02m', 'email', 'accounts.toml')
+    await mkdir(join(dir, '.n24q02m', 'email'), { recursive: true })
     await writeFile(path, VALID, 'utf8')
 
     expect(await discoverAccountsFile({}, dir)).toEqual({ path, explicit: false })

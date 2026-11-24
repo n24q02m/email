@@ -10,6 +10,7 @@
  */
 
 import { buildCli } from '@n24q02m/hull'
+import { resolveProfile } from '@n24q02m/hull/storage'
 import { runAuth, runLogout } from '../src/auth-cli.js'
 import { STORE_PLUGIN } from '../src/data-dir.js'
 import { migrateLegacyData } from '../src/data-dir-migration.js'
@@ -53,19 +54,53 @@ async function serve(): Promise<number | undefined> {
   return undefined
 }
 
+function extractProfileFlag(rawArgv: string[]): { profile: string | undefined; rest: string[] } {
+  let profile: string | undefined
+  const rest: string[] = []
+  for (let i = 0; i < rawArgv.length; i++) {
+    const arg = rawArgv[i]
+    if (arg === '--') {
+      rest.push(...rawArgv.slice(i))
+      break
+    }
+    if (arg === '--profile') {
+      if (i + 1 >= rawArgv.length) {
+        throw new Error('Missing value for --profile')
+      }
+      profile = rawArgv[++i]
+      continue
+    }
+    if (arg.startsWith('--profile=')) {
+      profile = arg.slice('--profile='.length)
+      continue
+    }
+    rest.push(arg)
+  }
+  return { profile, rest }
+}
+
 const argv = process.argv.slice(2)
 
-// Before buildCli parses argv: its built-in `config`, `status` and `doctor`
-// commands read the credential store, and the pre-rename `tokens.json` and hull
-// blob have to move across first. The CLI promise stays pending for the life of
-// the server, so it must not be awaited at module scope.
+// Before buildCli parses argv: resolve any --profile selection into EMAIL_PROFILE,
+// then migrate v0/v1 state into `~/.n24q02m/email/` before built-ins or tool
+// handlers read credentials or tokens.
 void (async () => {
+  const { profile: explicitProfile, rest } = extractProfileFlag(argv)
+  const effectiveProfile = resolveProfile(STORE_PLUGIN, explicitProfile)
+  if (
+    explicitProfile !== undefined ||
+    process.env.EMAIL_PROFILE !== undefined ||
+    process.env.HULL_PROFILE !== undefined
+  ) {
+    process.env.EMAIL_PROFILE = effectiveProfile
+  }
+
   await migrateLegacyData()
 
   // `--help` is answered here, before buildCli sees the argv: buildCli prints one
   // flat list of every handler, which cannot show tool commands apart from
   // operator commands. Everything else still goes through buildCli.
-  if (argv[0] === '-h' || argv[0] === '--help') {
+  if (rest[0] === '-h' || rest[0] === '--help') {
     printCliHelp(SERVER_NAME)
     process.exit(0)
   }
@@ -85,7 +120,7 @@ void (async () => {
       },
       ...toolCliHandlers()
     }
-  })(argv)
+  })(rest)
 })().then(
   (code) => process.exit(code),
   (error: unknown) => {

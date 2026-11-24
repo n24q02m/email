@@ -483,7 +483,7 @@ export function toolCliHandlers(): Record<string, (argv: string[]) => Promise<nu
  */
 export function printCliHelp(programName = PROGRAM): void {
   const lines: string[] = [
-    `usage: ${programName} [-h] [--version] [<command> [<action>] [options]]`,
+    `usage: ${programName} [-h] [--version] [--profile <name>] [<command> [<action>] [options]]`,
     '',
     'server:',
     `  ${programName.padEnd(30)}start the MCP server over stdio (default)`,
@@ -514,6 +514,7 @@ export function printCliHelp(programName = PROGRAM): void {
     'flags:',
     `  ${'-h, --help'.padEnd(30)}this message (\`<command> --help\` for a command's flags)`,
     `  ${'--version, -V'.padEnd(30)}print the version`,
+    `  ${'--profile <name>'.padEnd(30)}select named credential profile (or EMAIL_PROFILE / HULL_PROFILE)`,
     `  ${'--json'.padEnd(30)}(tool commands) print the tool result as JSON`
   )
 
