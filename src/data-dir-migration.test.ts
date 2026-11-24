@@ -6,10 +6,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { DATA_DIR_ENV, DATA_DIR_NAME, LEGACY_DATA_DIR_NAME, LEGACY_STORE_PLUGIN, STORE_PLUGIN } from './data-dir.js'
 import { migrateLegacyData, resetStoreMigrationForTesting, StoreMigrationError } from './data-dir-migration.js'
 
-// The two on-disk layouts the rename moves state between. Spelled out rather than
-// derived, so a silent rename in either direction fails here.
+// The on-disk layouts the rename/migration moves state between. Spelled out
+// rather than derived, so a silent rename in either direction fails here.
 const OLD_DIR = '.better-email-mcp'
-const NEW_DIR = '.email'
+const V1_DIR = '.email'
+const NEW_DIR = join('.n24q02m', 'email')
 
 const tokensFile = (email: string, refreshToken: string) =>
   JSON.stringify({ [email]: { accessToken: 'at', refreshToken, expiresAt: 1000, clientId: 'cid' } })
@@ -54,7 +55,7 @@ describe('migrateLegacyData', () => {
 
     expect(report.migrated).toEqual([
       { source: join(home, OLD_DIR, 'tokens.json'), target: join(home, NEW_DIR, 'tokens.json') },
-      { source: join(home, '.better-email'), target: join(home, NEW_DIR, 'config.json') }
+      { source: join(home, '.n24q02m', 'better-email'), target: join(home, NEW_DIR, 'config.json') }
     ])
     // Byte-identical copy, 0600 on POSIX, and the original still there.
     expect(readFileSync(join(home, NEW_DIR, 'tokens.json'), 'utf-8')).toBe(
@@ -165,20 +166,38 @@ describe('migrateLegacyData', () => {
   it.skipIf(process.platform === 'win32' || process.getuid?.() === 0)(
     'reports an unreadable pre-rename credential store instead of dropping it',
     async () => {
-      await new PerPluginStore(LEGACY_STORE_PLUGIN).save({ EMAIL_CREDENTIALS: 'user@example.com:app-password' })
-      chmodSync(join(home, '.better-email'), 0o000)
+      mkdirSync(join(home, V1_DIR), { recursive: true })
+      writeFileSync(join(home, V1_DIR, 'config.json'), '{}')
+      chmodSync(join(home, V1_DIR), 0o000)
       try {
         const failure = await migrateLegacyData().catch((error: unknown) => error)
 
         expect(failure).toBeInstanceOf(StoreMigrationError)
-        expect((failure as StoreMigrationError).path).toBe(join(home, '.better-email'))
-        expect((failure as Error).message).toContain(join(home, '.better-email'))
+        expect((failure as StoreMigrationError).path).toBe(join(home, V1_DIR))
+        expect((failure as Error).message).toContain(join(home, V1_DIR))
       } finally {
-        chmodSync(join(home, '.better-email'), 0o700)
+        chmodSync(join(home, V1_DIR), 0o700)
       }
       expect(existsSync(join(home, NEW_DIR, 'config.json'))).toBe(false)
     }
   )
+
+  it('migrates v1 (~/.email) tokens and accounts.toml ahead of v0 (~/.better-email-mcp)', async () => {
+    mkdirSync(join(home, OLD_DIR), { recursive: true })
+    mkdirSync(join(home, V1_DIR), { recursive: true })
+    writeFileSync(join(home, OLD_DIR, 'tokens.json'), tokensFile('user@outlook.com', 'v0-rt'))
+    writeFileSync(join(home, V1_DIR, 'tokens.json'), tokensFile('user@outlook.com', 'v1-rt'))
+    writeFileSync(join(home, V1_DIR, 'accounts.toml'), '[accounts.work]\nemail="w@x.com"\npassword="p"\n')
+
+    const report = await migrateLegacyData()
+
+    expect(report.migrated).toEqual([
+      { source: join(home, V1_DIR, 'tokens.json'), target: join(home, NEW_DIR, 'tokens.json') },
+      { source: join(home, V1_DIR, 'accounts.toml'), target: join(home, NEW_DIR, 'accounts.toml') }
+    ])
+    expect(readFileSync(join(home, NEW_DIR, 'tokens.json'), 'utf-8')).toBe(tokensFile('user@outlook.com', 'v1-rt'))
+    expect(readFileSync(join(home, NEW_DIR, 'accounts.toml'), 'utf-8')).toContain('w@x.com')
+  })
 
   it('migrates once per process even when startup paths call it twice', async () => {
     mkdirSync(join(home, OLD_DIR), { recursive: true })

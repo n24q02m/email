@@ -220,7 +220,7 @@ describe('saveTokens', () => {
 
     saveTokens('user@outlook.com', tokens)
 
-    expect(mockMkdirSync).toHaveBeenCalledWith(expect.stringContaining('.email'), {
+    expect(mockMkdirSync).toHaveBeenCalledWith(expect.stringMatching(/\.n24q02m[/\\]email/), {
       recursive: true,
       mode: 0o700
     })

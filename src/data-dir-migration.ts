@@ -5,17 +5,14 @@
  *
  * Two kinds of state move:
  *
- *  1. `tokens.json` - the saved Outlook grants, written by this server under
- *     `<base>/.better-email-mcp/` where the base is `EMAIL_DATA_DIR` or `$HOME`.
- *     It is copied byte-for-byte to `<base>/.email/tokens.json` with mode 0600
- *     and verified before the run reports success.
+ *  1. `tokens.json` and `accounts.toml` - copied byte-for-byte into `<dataDir>/`
+ *     with mode 0600 and verified before the run reports success. Legacy sources
+ *     are checked newest-first: `<base>/.email/` (v1) then
+ *     `<base>/.better-email-mcp/` (v0).
  *  2. hull's per-plugin credential blob (`config.json` + its machine key) that
- *     the CLI built-ins (`config`, `status`, `doctor`) read. Every release so far
- *     passed the slug `better-email`, so it lives in `~/.better-email/`; hull now
- *     reads `~/.email/`. The payload is decrypted and re-encrypted through hull
- *     rather than the directory being renamed, because hull derives a single-user
- *     machine key per directory and a copy is the only form that is verified.
- *     (hull's own read-only fallbacks still cover `~/.better-email-mcp/`.)
+ *     the CLI built-ins (`config`, `status`, `doctor`) read, checked newest-first
+ *     across legacy layouts (`~/.email/`, `~/.email-mcp/`, `~/.better-email-mcp/`,
+ *     and `~/.better-email/`) and re-encrypted into `~/.n24q02m/email/`.
  *
  * Rules this module keeps, because it moves live credentials:
  *
@@ -31,6 +28,7 @@
 
 import type { Stats } from 'node:fs'
 import {
+  accessSync,
   chmodSync,
   closeSync,
   copyFileSync,
@@ -44,8 +42,21 @@ import {
 } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { credPath, dataDirCandidates, PerPluginStore } from '@n24q02m/hull/storage'
-import { DATA_DIR_NAME, LEGACY_DATA_DIR_NAME, LEGACY_STORE_PLUGIN, resolveBaseDir, STORE_PLUGIN } from './data-dir.js'
+import {
+  credPath,
+  type DataDirLocation,
+  dataDirCandidates,
+  legacyDataDirs,
+  PerPluginStore
+} from '@n24q02m/hull/storage'
+import {
+  LEGACY_DATA_DIR_NAME,
+  LEGACY_STORE_PLUGIN,
+  resolveBaseDir,
+  resolveDataDir,
+  STORE_PLUGIN,
+  V1_DATA_DIR_NAME
+} from './data-dir.js'
 
 /** One path copied forward out of the pre-rename layout. */
 export interface MigratedPath {
@@ -81,38 +92,63 @@ function errorCode(error: unknown): string {
   return (error as NodeJS.ErrnoException)?.code ?? 'unknown error'
 }
 
-/** The pre-rename `tokens.json`, or null when there is none. */
-function legacyTokensSource(): string | null {
-  const source = join(resolveBaseDir(), LEGACY_DATA_DIR_NAME, 'tokens.json')
-  let info: Stats
-  try {
-    info = statSync(source)
-  } catch (error) {
-    const code = errorCode(error)
-    if (code === 'ENOENT') return null
-    throw new StoreMigrationError(
-      source,
-      `Cannot read the previous token file ${source} (${code}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
-    )
+/** Legacy locations for server-owned state files, newest-first. */
+function legacyFileSource(fileName: string, label: string): string | null {
+  const base = resolveBaseDir()
+  const candidates = [join(base, V1_DATA_DIR_NAME, fileName), join(base, LEGACY_DATA_DIR_NAME, fileName)]
+  for (const source of candidates) {
+    const dir = dirname(source)
+    let dirInfo: Stats
+    try {
+      dirInfo = statSync(dir)
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === 'ENOENT') continue
+      throw new StoreMigrationError(
+        dir,
+        `Cannot read the previous credential directory ${dir} (${code}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
+      )
+    }
+    if (!dirInfo.isDirectory()) continue
+    try {
+      accessSync(dir, fsConstants.R_OK | fsConstants.X_OK)
+    } catch (error) {
+      throw new StoreMigrationError(
+        dir,
+        `Cannot read the previous credential directory ${dir} (${errorCode(error)}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
+      )
+    }
+    let info: Stats
+    try {
+      info = statSync(source)
+    } catch (error) {
+      const code = errorCode(error)
+      if (code === 'ENOENT') continue
+      throw new StoreMigrationError(
+        source,
+        `Cannot read the previous ${label} ${source} (${code}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
+      )
+    }
+    if (!info.isFile()) {
+      throw new StoreMigrationError(
+        source,
+        `${source} is not a file, so the saved ${label} cannot be read. Move it aside, then start again: nothing was migrated.`
+      )
+    }
+    return source
   }
-  if (!info.isFile()) {
-    throw new StoreMigrationError(
-      source,
-      `${source} is not a file, so the saved Outlook tokens cannot be read. Move it aside, then start again: nothing was migrated.`
-    )
-  }
-  return source
+  return null
 }
 
-/** Copy the saved Outlook tokens into the current layout, once. */
-function migrateTokens(report: MigrationReport): void {
-  const target = join(resolveBaseDir(), DATA_DIR_NAME, 'tokens.json')
+/** Copy one legacy state file into `<dataDir>/<fileName>`, once. */
+function migrateLegacyFile(fileName: string, label: string, report: MigrationReport): void {
+  const target = join(resolveDataDir(), fileName)
   if (existsSync(target)) {
     report.kept.push(target)
     return
   }
-  const source = legacyTokensSource()
-  if (source === null) return
+  const source = legacyFileSource(fileName, label)
+  if (source === null || source === target) return
 
   // Proven readable before anything is written, so an unreadable file is
   // reported as the source it is instead of as a copy failure on the target.
@@ -121,7 +157,7 @@ function migrateTokens(report: MigrationReport): void {
   } catch (error) {
     throw new StoreMigrationError(
       source,
-      `Cannot read the previous token file ${source} (${errorCode(error)}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
+      `Cannot read the previous ${label} ${source} (${errorCode(error)}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
     )
   }
 
@@ -138,7 +174,7 @@ function migrateTokens(report: MigrationReport): void {
     }
     throw new StoreMigrationError(
       target,
-      `Cannot copy the saved Outlook tokens to ${target} (${code}). The previous file ${source} was left untouched.`
+      `Cannot copy the saved ${label} to ${target} (${code}). The previous file ${source} was left untouched.`
     )
   }
 
@@ -158,16 +194,24 @@ function migrateTokens(report: MigrationReport): void {
     rmSync(target, { force: true })
     throw new StoreMigrationError(
       target,
-      `Copied the saved Outlook tokens to ${target} but could not read them back identically. The previous file ${source} was left untouched.`
+      `Copied the saved ${label} to ${target} but could not read them back identically. The previous file ${source} was left untouched.`
     )
   }
 
   report.migrated.push({ source, target })
 }
 
-/** First pre-rename directory holding a readable hull credential blob, in hull's order. */
-function legacyHullSource(): string | null {
-  for (const { dir } of dataDirCandidates(LEGACY_STORE_PLUGIN)) {
+/** First pre-v2 directory holding a readable hull credential blob, newest-first. */
+function legacyHullSource(): { dir: string; loadPlugin: string } | null {
+  const candidates: Array<{ loc: DataDirLocation; loadPlugin: string }> = [
+    ...legacyDataDirs(STORE_PLUGIN).map((loc) => ({ loc, loadPlugin: loc.keyPlugin })),
+    ...dataDirCandidates(LEGACY_STORE_PLUGIN).map((loc) => ({ loc, loadPlugin: LEGACY_STORE_PLUGIN }))
+  ]
+  const seen = new Set<string>()
+  for (const { loc, loadPlugin } of candidates) {
+    const { dir } = loc
+    if (seen.has(dir)) continue
+    seen.add(dir)
     let info: Stats
     try {
       info = statSync(dir)
@@ -198,7 +242,7 @@ function legacyHullSource(): string | null {
         `Cannot read the saved credential in ${dir} (${code}). Fix its permissions or move it aside, then start again: nothing was migrated and no credential was changed.`
       )
     }
-    return dir
+    return { dir, loadPlugin }
   }
   return null
 }
@@ -215,11 +259,11 @@ async function migrateHullCredential(report: MigrationReport): Promise<void> {
 
   let payload: Record<string, unknown> | null
   try {
-    payload = await new PerPluginStore(LEGACY_STORE_PLUGIN).load()
+    payload = await new PerPluginStore(source.loadPlugin).load()
   } catch (error) {
     throw new StoreMigrationError(
-      source,
-      `Cannot read the saved credential in ${source} (${errorCode(error)}). Nothing was migrated and the previous store was left untouched.`
+      source.dir,
+      `Cannot read the saved credential in ${source.dir} (${errorCode(error)}). Nothing was migrated and the previous store was left untouched.`
     )
   }
   // Nothing saved there (or hull already reported it as corrupt).
@@ -231,7 +275,7 @@ async function migrateHullCredential(report: MigrationReport): Promise<void> {
   } catch (error) {
     throw new StoreMigrationError(
       target,
-      `Cannot write the migrated credential to ${target} (${errorCode(error)}). The previous store in ${source} was left untouched.`
+      `Cannot write the migrated credential to ${target} (${errorCode(error)}). The previous store in ${source.dir} was left untouched.`
     )
   }
 
@@ -244,18 +288,19 @@ async function migrateHullCredential(report: MigrationReport): Promise<void> {
   if (!isDeepStrictEqual(readBack, payload)) {
     throw new StoreMigrationError(
       target,
-      `Wrote ${target} but reading it back did not return the migrated credential. The previous store in ${source} was left untouched.`
+      `Wrote ${target} but reading it back did not return the migrated credential. The previous store in ${source.dir} was left untouched.`
     )
   }
 
-  report.migrated.push({ source, target })
+  report.migrated.push({ source: source.dir, target })
 }
 
 async function runMigration(): Promise<MigrationReport> {
   const report: MigrationReport = { migrated: [], kept: [] }
-  // Tokens first: they are the state a user notices, and the hull blob lives in a
-  // different directory, so one failing never depends on the other.
-  migrateTokens(report)
+  // Tokens & accounts first: they are the state a user notices, and the hull
+  // blob may come from a separate directory, so one failing never drops another.
+  migrateLegacyFile('tokens.json', 'token file', report)
+  migrateLegacyFile('accounts.toml', 'accounts file', report)
   await migrateHullCredential(report)
   return report
 }

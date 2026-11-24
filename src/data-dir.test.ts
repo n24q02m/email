@@ -1,6 +1,13 @@
 import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DATA_DIR_ENV, DATA_DIR_NAME, DataDirEscapeError, resolveBaseDir, resolveDataDir } from './data-dir.js'
+import {
+  DATA_DIR_ENV,
+  DATA_DIR_NAME,
+  DataDirEscapeError,
+  resolveBaseDir,
+  resolveDataDir,
+  V1_DATA_DIR_NAME
+} from './data-dir.js'
 
 // Platform-neutral absolute home: `resolve` makes it absolute on Windows too.
 const HOME = resolve('/', 'home', 'user')
@@ -42,5 +49,23 @@ describe('resolveDataDir', () => {
     expect(resolveDataDir({ [DATA_DIR_ENV]: '' }, HOME)).toBe(join(HOME, DATA_DIR_NAME))
     expect(resolveDataDir({ [DATA_DIR_ENV]: '   ' }, HOME)).toBe(join(HOME, DATA_DIR_NAME))
     expect(resolveDataDir({ [DATA_DIR_ENV]: undefined }, HOME)).toBe(join(HOME, DATA_DIR_NAME))
+  })
+
+  it('uses .n24q02m/email as DATA_DIR_NAME and keeps .email as V1_DATA_DIR_NAME', () => {
+    expect(DATA_DIR_NAME).toBe(join('.n24q02m', 'email'))
+    expect(V1_DATA_DIR_NAME).toBe('.email')
+  })
+
+  it('honors N24Q02M_HOME and N24Q02M_USE_XDG when EMAIL_DATA_DIR is unset', () => {
+    const customRoot = resolve('/', 'srv', 'n24q02m-state')
+    const xdgRoot = resolve('/', 'srv', 'xdg-config')
+    expect(resolveDataDir({ N24Q02M_HOME: customRoot }, HOME)).toBe(join(customRoot, 'email'))
+    expect(resolveDataDir({ N24Q02M_USE_XDG: '1', XDG_CONFIG_HOME: xdgRoot }, HOME)).toBe(
+      join(xdgRoot, 'n24q02m', 'email')
+    )
+    const explicitData = resolve('/', 'srv', 'mail')
+    expect(resolveDataDir({ [DATA_DIR_ENV]: explicitData, N24Q02M_HOME: customRoot }, HOME)).toBe(
+      join(explicitData, DATA_DIR_NAME)
+    )
   })
 })

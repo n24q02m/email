@@ -28,7 +28,7 @@ import { readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { parse, TomlError } from 'smol-toml'
-import { resolveBaseDir } from '../../data-dir.js'
+import { resolveDataDir } from '../../data-dir.js'
 import type { SmtpSecurity } from './config.js'
 import { EmailMCPError } from './errors.js'
 
@@ -37,14 +37,6 @@ export const ACCOUNTS_FILE_ENV = 'EMAIL_ACCOUNTS_FILE'
 
 /** File name looked up in the data directory when the env var is unset. */
 export const ACCOUNTS_FILE_NAME = 'accounts.toml'
-
-/**
- * Data directory the file lives in when `EMAIL_ACCOUNTS_FILE` is unset. This is
- * the same directory the rest of the server's state moves to (`resolveDataDir`
- * follows the same name once the data-dir rename lands), so one backup covers
- * tokens and accounts.
- */
-const ACCOUNTS_DIR_NAME = '.email'
 
 /** Values that turn the file off instead of naming a path. */
 const DISABLED_VALUES: Record<string, true> = { off: true, none: true, false: true, '0': true }
@@ -128,7 +120,7 @@ export function resolveAccountsFilePath(
     }
     return { path: resolve(home, raw), explicit: true }
   }
-  return { path: join(resolveBaseDir(env, home), ACCOUNTS_DIR_NAME, ACCOUNTS_FILE_NAME), explicit: false }
+  return { path: join(resolveDataDir(env, home), ACCOUNTS_FILE_NAME), explicit: false }
 }
 
 /**

@@ -4,10 +4,14 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock all external dependencies BEFORE importing the module under test
-vi.mock('@n24q02m/hull/storage', () => ({
-  resolveConfig: vi.fn(),
-  deleteConfig: vi.fn().mockResolvedValue(undefined)
-}))
+vi.mock('@n24q02m/hull/storage', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@n24q02m/hull/storage')>()
+  return {
+    ...actual,
+    resolveConfig: vi.fn(),
+    deleteConfig: vi.fn().mockResolvedValue(undefined)
+  }
+})
 
 vi.mock('./tools/helpers/oauth2.js', () => ({
   loadOutlookEmails: vi.fn().mockResolvedValue([])

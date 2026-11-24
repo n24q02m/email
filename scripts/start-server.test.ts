@@ -45,6 +45,8 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     console.error = originalConsoleError
     setHomeDirForTesting(null)
     delete process.env.EMAIL_DATA_DIR
+    delete process.env.EMAIL_PROFILE
+    delete process.env.HULL_PROFILE
     vi.restoreAllMocks()
   })
 
@@ -250,7 +252,20 @@ describe('start-server (buildCli wiring)', { timeout: 30_000 }, () => {
     await import('./start-server.js')
     await vi.waitFor(() => expect(runLogout).toHaveBeenCalled())
 
-    expect(existsSync(join(process.env.EMAIL_DATA_DIR as string, '.email', 'tokens.json'))).toBe(true)
+    expect(existsSync(join(process.env.EMAIL_DATA_DIR as string, '.n24q02m', 'email', 'tokens.json'))).toBe(true)
     expect(existsSync(join(process.env.EMAIL_DATA_DIR as string, '.better-email-mcp', 'tokens.json'))).toBe(true)
+  })
+
+  it('applies --profile flag to EMAIL_PROFILE before dispatching buildCli', async () => {
+    process.argv.push('--profile', 'work', 'config', 'status')
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    await import('./start-server.js')
+    await vi.waitFor(() => expect(process.exit).toHaveBeenCalled())
+
+    expect(process.env.EMAIL_PROFILE).toBe('work')
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('email: not configured'))
+    expect(process.exit).toHaveBeenCalledWith(0)
+    logSpy.mockRestore()
   })
 })
