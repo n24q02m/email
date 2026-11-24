@@ -21,6 +21,7 @@ import {
   saveTokens,
   tokenFile
 } from './oauth2.js'
+import { unsealTokenEnvelope } from './token-crypto.js'
 
 const ENV_KEYS = [DATA_DIR_ENV, 'EMAIL_CREDENTIALS', 'EMAIL_ACCOUNTS_FILE', 'EMAIL_USER', 'EMAIL_APP_PASSWORD'] as const
 let root: string
@@ -70,7 +71,9 @@ describe('Outlook token store per namespace', () => {
     expect(await loadOutlookEmails()).toEqual(['operator@outlook.com'])
 
     const aliceFile = join(resolveDataDir(), 'users', 'alice', 'tokens.json')
-    expect(Object.keys(JSON.parse(readFileSync(aliceFile, 'utf-8')))).toEqual(['shared@outlook.com'])
+    const aliceRaw = readFileSync(aliceFile, 'utf-8')
+    expect(aliceRaw).not.toContain('shared@outlook.com')
+    expect(Object.keys(unsealTokenEnvelope(aliceRaw) ?? {})).toEqual(['shared@outlook.com'])
   })
 
   it('logout in one namespace leaves the others', async () => {

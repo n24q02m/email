@@ -13,6 +13,7 @@ import { tryOpenBrowser } from '@n24q02m/hull'
 import { setState } from '../../credential-state.js'
 import { callerDataDir, callerNamespace, scopedKey } from '../../tenant.js'
 import { isSafeUrl } from './security.js'
+import { sealTokenStore, unsealTokenEnvelope } from './token-crypto.js'
 
 // Microsoft OAuth2 endpoints. The tenant segment decides which directory signs
 // the user in: "consumers" = personal Microsoft accounts, "common" = personal
@@ -278,6 +279,19 @@ export function _resetTokenCache(): void {
   tokenStoreCache.delete(tokenFile())
 }
 
+function decodeTokenStore(raw: string): { store: TokenStore | null; isLegacyPlaintext: boolean } {
+  try {
+    const unsealed = unsealTokenEnvelope(raw)
+    if (unsealed !== null) {
+      return { store: parseTokenStore(JSON.stringify(unsealed)), isLegacyPlaintext: false }
+    }
+  } catch {
+    return { store: null, isLegacyPlaintext: false }
+  }
+  const legacy = parseTokenStore(raw)
+  return { store: legacy, isLegacyPlaintext: legacy !== null && Object.keys(legacy).length > 0 }
+}
+
 /**
  * Load stored OAuth2 tokens for an email account. Returns null if none stored.
  */
@@ -291,9 +305,23 @@ export async function loadStoredTokens(email: string): Promise<OAuth2Tokens | nu
       return cached[key] || null
     }
     const data = await readFile(file, 'utf-8')
-    const store = parseTokenStore(data)
+    const { store, isLegacyPlaintext } = decodeTokenStore(data)
     if (!store) {
       return null
+    }
+    if (isLegacyPlaintext) {
+      try {
+        const dir = dirname(file)
+        if (!existsSync(dir)) {
+          mkdirSync(dir, { recursive: true, mode: 0o700 })
+        }
+        const sealed = sealTokenStore(store)
+        if (unsealTokenEnvelope(sealed) !== null) {
+          writeFileSync(file, sealed, { mode: 0o600 })
+        }
+      } catch {
+        // Keep returning tokens even if legacy upgrade write cannot persist
+      }
     }
     tokenStoreCache.set(file, store)
     return store[key] || null
@@ -309,7 +337,7 @@ export async function loadStoredTokens(email: string): Promise<OAuth2Tokens | nu
 export async function loadOutlookEmails(): Promise<string[]> {
   try {
     const data = await readFile(tokenFile(), 'utf-8')
-    const store = parseTokenStore(data)
+    const { store } = decodeTokenStore(data)
     return store ? Object.keys(store).filter((k) => k.includes('@')) : []
   } catch {
     return []
@@ -339,7 +367,7 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
   let store: TokenStore
   try {
     const data = readFileSync(file, 'utf-8')
-    store = parseTokenStore(data) ?? {}
+    store = decodeTokenStore(data).store ?? {}
   } catch {
     store = {}
   }
@@ -361,7 +389,7 @@ export async function deleteStoredTokens(email?: string): Promise<string[]> {
   }
 
   tokenStoreCache.set(file, store)
-  writeFileSync(file, JSON.stringify(store, null, 2), { mode: 0o600 })
+  writeFileSync(file, sealTokenStore(store), { mode: 0o600 })
   return deleted
 }
 
@@ -380,12 +408,7 @@ function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
   try {
     if (!cached && existsSync(file)) {
       const data = readFileSync(file, 'utf-8')
-      const parsedStore = parseTokenStore(data)
-      if (parsedStore) {
-        store = parsedStore
-      } else {
-        store = {}
-      }
+      store = decodeTokenStore(data).store ?? {}
     }
   } catch {
     // Start fresh if file is corrupted
@@ -394,7 +417,7 @@ function saveTokensToFile(emailKey: string, tokens: OAuth2Tokens): void {
 
   store[emailKey] = tokens
   tokenStoreCache.set(file, store)
-  writeFileSync(file, JSON.stringify(store, null, 2), { mode: 0o600 })
+  writeFileSync(file, sealTokenStore(store), { mode: 0o600 })
 }
 
 /**
