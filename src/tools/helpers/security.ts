@@ -52,15 +52,21 @@ export function isValidToolName(name: string): boolean {
   return VALID_TOOL_NAMES.has(name)
 }
 
+const INVISIBLE_FORMAT_RE =
+  /(?:\u00AD|\u034F|\u061C|\u180E|[\u200B-\u200C]|\u200D|[\u200E-\u200F]|[\u202A-\u202E]|[\u2060-\u206F]|\uFEFF)/g
+const BREAKOUT_TAG_RE = /<[\s/]*untrusted[\s_]*email[\s_]*content\b[^>]*>/gi
+
 /** Wrap tool result with safety markers if it contains external content */
 export function wrapToolResult(toolName: string, jsonText: string): string {
   if (!EXTERNAL_CONTENT_TOOLS.has(toolName)) {
     return jsonText
   }
 
-  // Prevent XPIA breakout: sanitize the closing tag to prevent attackers from
-  // escaping the untrusted block and injecting system commands.
-  const safeText = jsonText.replace(/untrusted_email_content/gi, 'u_n_t_r_u_s_t_e_d_email_content')
+  // Strip zero-width/bidi obfuscation and neutralize breakout tag forms before escaping bare tokens.
+  const cleanedText = jsonText.replace(INVISIBLE_FORMAT_RE, '')
+  const safeText = cleanedText
+    .replace(BREAKOUT_TAG_RE, (match) => `[neutralized:${match.slice(1, -1)}]`)
+    .replace(/untrusted_email_content/gi, 'u_n_t_r_u_s_t_e_d_email_content')
 
   return `<untrusted_email_content>\n${safeText}\n</untrusted_email_content>\n\n${SAFETY_WARNING}`
 }

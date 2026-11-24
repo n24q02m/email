@@ -24,13 +24,19 @@
  * file, so a typo never degrades into "no accounts configured".
  */
 
-import { readFile, stat } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { parse, TomlError } from 'smol-toml'
 import { resolveDataDir } from '../../data-dir.js'
 import type { SmtpSecurity } from './config.js'
 import { EmailMCPError } from './errors.js'
+import {
+  ACCOUNTS_ENC_FILE_NAME,
+  sealAccountsContent,
+  unsealAccountsContent,
+  unsealSecretValue
+} from './token-crypto.js'
 
 /** Env var naming the accounts file, or `off`/`none` to disable the file. */
 export const ACCOUNTS_FILE_ENV = 'EMAIL_ACCOUNTS_FILE'
@@ -143,7 +149,14 @@ export async function discoverAccountsFile(
     (info) => info.isFile(),
     () => false
   )
-  return defaultFileIsPresent ? selection : null
+  if (defaultFileIsPresent) return selection
+
+  const encryptedPath = join(resolveDataDir(env, home), ACCOUNTS_ENC_FILE_NAME)
+  const encryptedFileIsPresent = await stat(encryptedPath).then(
+    (info) => info.isFile(),
+    () => false
+  )
+  return encryptedFileIsPresent ? { path: encryptedPath, explicit: false } : null
 }
 
 /**
@@ -309,7 +322,14 @@ function parseAccountEntry(key: string, value: unknown, fileWho: string): Accoun
       'Use an app password; Outlook accounts run `email auth outlook <address>`'
     )
   }
-  const password = requireString(value, 'password', who)
+  const rawPassword = requireString(value, 'password', who)
+  let password: string
+  try {
+    password = unsealSecretValue(rawPassword)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw invalid(`${who}: password could not be decrypted (${detail})`)
+  }
 
   let enabled = true
   if (Object.hasOwn(value, 'enabled')) {
@@ -359,7 +379,7 @@ function parseAccountEntry(key: string, value: unknown, fileWho: string): Accoun
   }
 }
 
-/** Read and validate the accounts file at `path`. */
+/** Read, decrypt if needed, and validate the accounts file at `path`. */
 export async function readAccountsFile(path: string): Promise<AccountsFileEntry[]> {
   let text: string
   try {
@@ -375,5 +395,23 @@ export async function readAccountsFile(path: string): Promise<AccountsFileEntry[
     }
     throw invalid(`Accounts file could not be read: ${path}`, code ? `filesystem error ${code}` : undefined)
   }
-  return parseAccountsFile(text, path)
+  let decodedText: string
+  try {
+    decodedText = unsealAccountsContent(text)
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw invalid(`Accounts file could not be decrypted (${path}): ${detail}`)
+  }
+  return parseAccountsFile(decodedText, path)
+}
+
+/** Validate and write an AES-256-GCM encrypted accounts file to `path` with mode 0600. */
+export async function sealAccountsFile(tomlText: string, path: string): Promise<void> {
+  parseAccountsFile(tomlText, path)
+  const sealed = sealAccountsContent(tomlText)
+  if (unsealAccountsContent(sealed) !== tomlText) {
+    throw new Error('Encrypted accounts round-trip verification failed')
+  }
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 })
+  await writeFile(path, sealed, { mode: 0o600 })
 }

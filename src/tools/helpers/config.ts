@@ -513,9 +513,16 @@ export async function loadConfig(): Promise<AccountConfig[]> {
   return parseCredentials(credentials)
 }
 
+import { ACCOUNTS_ENC_FILE_NAME } from './token-crypto.js'
+
 /** Path of a multi-user namespace's accounts file: `<data dir>/users/<namespace>/accounts.toml`. */
 export function namespaceAccountsFile(namespace: string): string {
   return join(namespaceDir(namespace), ACCOUNTS_FILE_NAME)
+}
+
+/** Path of a multi-user namespace's encrypted accounts file: `<data dir>/users/<namespace>/accounts.enc`. */
+export function namespaceAccountsEncFile(namespace: string): string {
+  return join(namespaceDir(namespace), ACCOUNTS_ENC_FILE_NAME)
 }
 
 /**
@@ -536,7 +543,9 @@ export async function loadCallerConfig(): Promise<AccountConfig[]> {
   const namespace = callerNamespace()
   if (namespace === null) return loadConfig()
 
-  const path = namespaceAccountsFile(namespace)
+  const tomlPath = namespaceAccountsFile(namespace)
+  const encPath = namespaceAccountsEncFile(namespace)
+  const path = existsSync(tomlPath) ? tomlPath : encPath
   const accounts = existsSync(path) ? await loadAccountsFile(path) : []
   const listed = new Set(accounts.map((account) => account.email.toLowerCase()))
   for (const email of await loadOutlookEmails()) {

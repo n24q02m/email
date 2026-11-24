@@ -21,6 +21,40 @@ vi.mock('node:os', () => ({
   homedir: vi.fn().mockReturnValue('/mock/home')
 }))
 
+vi.mock('./token-crypto.js', () => ({
+  sealTokenStore: vi.fn((store: Record<string, unknown>) =>
+    JSON.stringify({
+      v: 1,
+      alg: 'aes-256-gcm',
+      envelope: `sealed:${Buffer.from(JSON.stringify(store), 'utf8').toString('base64')}`
+    })
+  ),
+  unsealTokenEnvelope: vi.fn((raw: string) => {
+    try {
+      const parsed = JSON.parse(raw) as { v?: number; alg?: string; envelope?: string }
+      if (parsed?.v === 1 && parsed?.alg === 'aes-256-gcm' && typeof parsed.envelope === 'string') {
+        if (!parsed.envelope.startsWith('sealed:')) {
+          throw new Error('corrupt envelope')
+        }
+        return JSON.parse(Buffer.from(parsed.envelope.slice('sealed:'.length), 'base64').toString('utf8'))
+      }
+    } catch (error) {
+      if (error instanceof SyntaxError) return null
+      throw error
+    }
+    return null
+  })
+}))
+
+function decodeWrittenEnvelope(raw: string): Record<string, any> {
+  const outer = JSON.parse(raw)
+  expect(outer.v).toBe(1)
+  expect(outer.alg).toBe('aes-256-gcm')
+  expect(typeof outer.envelope).toBe('string')
+  expect(outer.envelope.startsWith('sealed:')).toBe(true)
+  return JSON.parse(Buffer.from(outer.envelope.slice('sealed:'.length), 'base64').toString('utf8'))
+}
+
 const mockTryOpenBrowser = vi.mocked(tryOpenBrowser)
 vi.mock('../../credential-state.js', () => ({
   setState: vi.fn()
@@ -226,16 +260,19 @@ describe('saveTokens', () => {
     })
   })
 
-  it('writes tokens with 0600 permissions', () => {
+  it('writes tokens as an encrypted envelope with 0600 permissions', () => {
     mockExistsSync.mockReturnValue(false)
 
     saveTokens('user@outlook.com', tokens)
 
     expect(mockWriteFileSync).toHaveBeenCalledWith(
       expect.stringContaining('tokens.json'),
-      expect.stringContaining('"user@outlook.com"'),
+      expect.stringContaining('"aes-256-gcm"'),
       { mode: 0o600 }
     )
+    const raw = mockWriteFileSync.mock.calls[0]![1] as string
+    expect(raw).not.toContain('user@outlook.com')
+    expect(decodeWrittenEnvelope(raw)['user@outlook.com']).toEqual(tokens)
   })
 
   it('merges with existing tokens', () => {
@@ -251,7 +288,7 @@ describe('saveTokens', () => {
 
     saveTokens('user@outlook.com', tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['other@hotmail.com']).toBeDefined()
     expect(written['user@outlook.com']).toEqual(tokens)
   })
@@ -262,7 +299,7 @@ describe('saveTokens', () => {
 
     saveTokens('user@outlook.com', tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written).toEqual({ 'user@outlook.com': tokens })
   })
 
@@ -271,7 +308,7 @@ describe('saveTokens', () => {
 
     saveTokens('User@OUTLOOK.com', tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['user@outlook.com']).toEqual(tokens)
   })
 })
@@ -910,7 +947,7 @@ describe('saveTokens edge cases', () => {
 
     saveTokens('user@outlook.com', tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['user@outlook.com']).toEqual(tokens)
     // Should only have the new token, not corrupted data
     expect(Object.keys(written)).toEqual(['user@outlook.com'])
@@ -938,7 +975,7 @@ describe('saveTokens edge cases', () => {
     saveTokens('second@outlook.com', tokens2)
 
     // readFileSync should NOT be called for second save (cache is used)
-    const written = JSON.parse(mockWriteFileSync.mock.calls[1]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[1]![1] as string)
     expect(written['first@outlook.com']).toEqual(tokens1)
     expect(written['second@outlook.com']).toEqual(tokens2)
   })
@@ -975,7 +1012,7 @@ describe('deleteStoredTokens', () => {
     const deleted = await deleteStoredTokens('A@outlook.com')
 
     expect(deleted).toEqual(['a@outlook.com'])
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(Object.keys(written)).toEqual(['b@outlook.com'])
   })
 
@@ -1003,7 +1040,7 @@ describe('deleteStoredTokens', () => {
     const deleted = await deleteStoredTokens()
 
     expect(deleted.sort()).toEqual(['a@outlook.com', 'b@outlook.com'])
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written).toEqual({})
   })
 
@@ -1408,7 +1445,7 @@ describe('saveOutlookTokens', () => {
     await saveOutlookTokens(tokens)
 
     expect(mockWriteFileSync).toHaveBeenCalled()
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['user@outlook.com']).toEqual({
       accessToken: 'at-123',
       refreshToken: 'rt-123',
@@ -1426,7 +1463,7 @@ describe('saveOutlookTokens', () => {
 
     await saveOutlookTokens(tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['env@outlook.com']).toBeDefined()
     expect(written['env@outlook.com'].accessToken).toBe('at-env')
   })
@@ -1440,7 +1477,7 @@ describe('saveOutlookTokens', () => {
 
     await saveOutlookTokens(tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['sub-789']).toBeDefined()
     expect(written['sub-789'].accessToken).toBe('at-sub')
   })
@@ -1456,7 +1493,7 @@ describe('saveOutlookTokens', () => {
 
     await saveOutlookTokens(tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['id-sub-456']).toBeDefined()
     expect(written['id-sub-456'].accessToken).toBe('at-id')
   })
@@ -1469,7 +1506,7 @@ describe('saveOutlookTokens', () => {
 
     await saveOutlookTokens(tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['outlook-device-code']).toBeDefined()
   })
 
@@ -1481,7 +1518,7 @@ describe('saveOutlookTokens', () => {
 
     await saveOutlookTokens(tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['defaults@outlook.com']).toEqual({
       accessToken: '',
       refreshToken: '',
@@ -1501,7 +1538,7 @@ describe('saveOutlookTokens', () => {
 
     await saveOutlookTokens(tokens)
 
-    const written = JSON.parse(mockWriteFileSync.mock.calls[0]![1] as string)
+    const written = decodeWrittenEnvelope(mockWriteFileSync.mock.calls[0]![1] as string)
     expect(written['user@outlook.com'].accessToken).toBe('')
     expect(written['user@outlook.com'].refreshToken).toBe('')
     expect(written['user@outlook.com'].expiresAt).toBe(1000000 + 3600)

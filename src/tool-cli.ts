@@ -20,6 +20,7 @@ import { resolveCredentialState } from './credential-state.js'
 import type { AccountConfig } from './tools/helpers/config.js'
 import { loadConfig } from './tools/helpers/config.js'
 import { aiReadableMessage, EmailMCPError, enhanceError, NOT_CONFIGURED_MESSAGE } from './tools/helpers/errors.js'
+import { markStructuredContent, wrapToolResult } from './tools/helpers/security.js'
 import { invokeTool, TOOLS } from './tools/registry.js'
 
 const PROGRAM = 'email'
@@ -457,7 +458,16 @@ export async function runToolCommand(toolName: string, argv: string[]): Promise<
   try {
     const accounts = await loadToolAccounts(toolName)
     const result = await invokeTool(toolName, accounts, parsed.input)
-    process.stdout.write(parsed.json ? `${JSON.stringify(result, null, 2)}\n` : `${humanResult(toolName, result)}\n`)
+    const rendered = parsed.json
+      ? JSON.stringify(
+          typeof result === 'object' && result !== null && !Array.isArray(result)
+            ? markStructuredContent(toolName, result as Record<string, unknown>)
+            : result,
+          null,
+          2
+        )
+      : wrapToolResult(toolName, humanResult(toolName, result))
+    process.stdout.write(`${rendered}\n`)
     return 0
   } catch (error) {
     process.stderr.write(`${errorText(error)}\n`)
