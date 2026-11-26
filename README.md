@@ -517,7 +517,7 @@ it with `OUTLOOK_SCOPES` so the refresh does not ask for more than was granted.
 | Gmail | App Password | Auto (skipped) |
 | Yahoo | App Password | Auto (skipped) |
 | iCloud/Me.com | App-Specific Password | Auto (skipped) |
-| Outlook/Hotmail/Live | OAuth2 (Device Code) | IMAP APPEND |
+| Outlook/Hotmail/Live | OAuth2 (Device Code) | Auto (skipped) |
 | Zoho | App Password | IMAP APPEND |
 | ProtonMail | ProtonMail Bridge | IMAP APPEND |
 | Custom | Via `email:pass:imap.host` | IMAP APPEND |

@@ -68,6 +68,16 @@ const icloudAccounts: AccountConfig[] = [
   }
 ]
 
+const zohoAccounts: AccountConfig[] = [
+  {
+    id: 'user1_zoho_com',
+    email: 'user1@zoho.com',
+    password: 'pass1',
+    imap: { host: 'imap.zoho.com', port: 993, secure: true },
+    smtp: { host: 'smtp.zoho.com', port: 465, secure: true }
+  }
+]
+
 beforeEach(() => {
   vi.clearAllMocks()
   mockResolveSentFolder.mockResolvedValue('Sent')
@@ -493,32 +503,11 @@ describe('send - save to sent', () => {
     expect(mockAppendToFolder).toHaveBeenCalledWith(icloudAccounts[0], 'Sent Messages', expect.any(Buffer), ['\\Seen'])
   })
 
-  it('saves to Sent folder for non-Gmail providers', async () => {
+  it('skips save-to-sent for Outlook/Microsoft 365 (auto-saves)', async () => {
     mockSendNewEmail.mockResolvedValue({
       success: true,
       message_id: '<new@outlook.com>',
       raw: Buffer.from('raw-email')
-    })
-    mockResolveSentFolder.mockResolvedValue('Sent Items')
-
-    const result = await send(outlookAccounts, {
-      action: 'new',
-      account: 'user1@outlook.com',
-      to: 'r@test.com',
-      subject: 'T',
-      body: 'B'
-    })
-
-    expect(result.saved_to_sent).toBe(true)
-    expect(mockResolveSentFolder).toHaveBeenCalledWith(outlookAccounts[0])
-    expect(mockAppendToFolder).toHaveBeenCalledWith(outlookAccounts[0], 'Sent Items', expect.any(Buffer), ['\\Seen'])
-  })
-
-  it('returns saved_to_sent: false when raw is undefined', async () => {
-    mockSendNewEmail.mockResolvedValue({
-      success: true,
-      message_id: '<new@outlook.com>'
-      // no raw buffer
     })
 
     const result = await send(outlookAccounts, {
@@ -533,17 +522,57 @@ describe('send - save to sent', () => {
     expect(mockAppendToFolder).not.toHaveBeenCalled()
   })
 
+  it('saves to Sent folder for providers whose SMTP does not auto-save', async () => {
+    mockSendNewEmail.mockResolvedValue({
+      success: true,
+      message_id: '<new@zoho.com>',
+      raw: Buffer.from('raw-email')
+    })
+    mockResolveSentFolder.mockResolvedValue('Sent Items')
+
+    const result = await send(zohoAccounts, {
+      action: 'new',
+      account: 'user1@zoho.com',
+      to: 'r@test.com',
+      subject: 'T',
+      body: 'B'
+    })
+
+    expect(result.saved_to_sent).toBe(true)
+    expect(mockResolveSentFolder).toHaveBeenCalledWith(zohoAccounts[0])
+    expect(mockAppendToFolder).toHaveBeenCalledWith(zohoAccounts[0], 'Sent Items', expect.any(Buffer), ['\\Seen'])
+  })
+
+  it('returns saved_to_sent: false when raw is undefined', async () => {
+    mockSendNewEmail.mockResolvedValue({
+      success: true,
+      message_id: '<new@zoho.com>'
+      // no raw buffer
+    })
+
+    const result = await send(zohoAccounts, {
+      action: 'new',
+      account: 'user1@zoho.com',
+      to: 'r@test.com',
+      subject: 'T',
+      body: 'B'
+    })
+
+    expect(result.saved_to_sent).toBe(false)
+    expect(mockAppendToFolder).not.toHaveBeenCalled()
+  })
+
   it('returns saved_to_sent: false when IMAP append fails (best-effort)', async () => {
     mockSendNewEmail.mockResolvedValue({
       success: true,
-      message_id: '<new@outlook.com>',
+      message_id: '<new@zoho.com>',
       raw: Buffer.from('raw-email')
     })
     mockAppendToFolder.mockRejectedValue(new Error('IMAP connection failed'))
 
-    const result = await send(outlookAccounts, {
+    const result = await send(zohoAccounts, {
       action: 'new',
-      account: 'user1@outlook.com',
+      account: 'user1@zoho.com',
       to: 'r@test.com',
       subject: 'T',
       body: 'B'
@@ -554,15 +583,15 @@ describe('send - save to sent', () => {
     expect(result.saved_to_sent).toBe(false)
   })
 
-  it('saves to sent on reply for non-Gmail', async () => {
+  it('saves to sent on reply for non-auto-saving providers', async () => {
     mockReadEmail.mockResolvedValue({
-      account_id: 'user1_outlook_com',
-      account_email: 'user1@outlook.com',
+      account_id: 'user1_zoho_com',
+      account_email: 'user1@zoho.com',
       uid: 10,
       message_id: '<orig@test>',
       subject: 'Thread',
       from: 'sender@test.com',
-      to: 'user1@outlook.com',
+      to: 'user1@zoho.com',
       date: '2025-01-01',
       flags: [],
       body_text: 'body',
@@ -570,13 +599,13 @@ describe('send - save to sent', () => {
     })
     mockReplyToEmail.mockResolvedValue({
       success: true,
-      message_id: '<reply@outlook.com>',
+      message_id: '<reply@zoho.com>',
       raw: Buffer.from('raw-reply')
     })
 
-    const result = await send(outlookAccounts, {
+    const result = await send(zohoAccounts, {
       action: 'reply',
-      account: 'user1@outlook.com',
+      account: 'user1@zoho.com',
       body: 'reply',
       uid: 10
     })
@@ -585,14 +614,14 @@ describe('send - save to sent', () => {
     expect(mockAppendToFolder).toHaveBeenCalled()
   })
 
-  it('saves to sent on forward for non-Gmail', async () => {
+  it('saves to sent on forward for non-auto-saving providers', async () => {
     mockReadEmail.mockResolvedValue({
-      account_id: 'user1_outlook_com',
-      account_email: 'user1@outlook.com',
+      account_id: 'user1_zoho_com',
+      account_email: 'user1@zoho.com',
       uid: 20,
       subject: 'FW',
       from: 'sender@test.com',
-      to: 'user1@outlook.com',
+      to: 'user1@zoho.com',
       date: '2025-01-01',
       flags: [],
       body_text: 'original',
@@ -600,13 +629,13 @@ describe('send - save to sent', () => {
     })
     mockForwardEmail.mockResolvedValue({
       success: true,
-      message_id: '<fwd@outlook.com>',
+      message_id: '<fwd@zoho.com>',
       raw: Buffer.from('raw-fwd')
     })
 
-    const result = await send(outlookAccounts, {
+    const result = await send(zohoAccounts, {
       action: 'forward',
-      account: 'user1@outlook.com',
+      account: 'user1@zoho.com',
       to: 'third@test.com',
       body: 'see attached',
       uid: 20
