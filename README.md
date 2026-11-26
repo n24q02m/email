@@ -31,7 +31,6 @@ mcp-name: io.github.n24q02m/email
 | [email](https://github.com/n24q02m/email)                                     | IMAP/SMTP email for AI agents -- read, send, organize folders, and manage att... | MCP         |
 | [fastretrieval](https://github.com/n24q02m/fastretrieval)                     | Fast multi-model retrieval runtime: ONNX and GGUF embeddings, reranking, and ... | Tooling     |
 | [hull](https://github.com/n24q02m/hull)                                       | hull is the shared monorepo core for the wet, crg and mnemo self-hosted stack    | MCP         |
-| [jules-task-archiver](https://github.com/n24q02m/jules-task-archiver)         | Chrome Extension for bulk operations on Jules tasks via batchexecute API -- a... | Tooling     |
 | [mnemo](https://github.com/n24q02m/mnemo)                                     | Persistent AI memory with hybrid search. Open, free, unlimited.                  | MCP         |
 | [notion](https://github.com/n24q02m/notion)                                   | Markdown-first Notion for AI agents -- pages, databases, blocks, and comments... | MCP         |
 | [skret](https://github.com/n24q02m/skret)                                     | Secrets without the server.                                                      | CLI         |
@@ -114,7 +113,7 @@ Most providers use an **App Password** (no OAuth setup); Outlook/Hotmail/Live us
 | OpenCode | `mcpServers` block in `opencode.json` |
 | Cursor / Windsurf / Gemini CLI / any MCP client | `mcpServers` JSON in the client's config — same shape as the example above |
 
-Full per-client walkthroughs: [docs.n24q02m.com/servers/email/setup/](https://docs.n24q02m.com/servers/email/setup/).
+Full per-client walkthroughs: [docs.n24q02m.com/plugins/servers/email/setup/](https://docs.n24q02m.com/plugins/servers/email/setup/).
 
 ## CLI
 
@@ -188,9 +187,9 @@ startCommand:
 
 ## Documentation
 
-Full docs at **[docs.n24q02m.com/servers/email/](https://docs.n24q02m.com/servers/email/)**:
+Full docs at **[docs.n24q02m.com/plugins/servers/email/](https://docs.n24q02m.com/plugins/servers/email/)**:
 
-- [Setup](https://docs.n24q02m.com/servers/email/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
+- [Setup](https://docs.n24q02m.com/plugins/servers/email/setup/) -- install methods for Claude Code, Codex, Gemini CLI, Cursor, Windsurf, mcp.json
 
 **Install with AI agent** -- paste this to your AI coding agent:
 
@@ -516,7 +515,7 @@ it with `OUTLOOK_SCOPES` so the refresh does not ask for more than was granted.
 |:---------|:-----|:-------------|
 | Gmail | App Password | Auto (skipped) |
 | Yahoo | App Password | Auto (skipped) |
-| iCloud/Me.com | App-Specific Password | Auto (skipped) |
+| iCloud/Me.com | App-Specific Password | IMAP APPEND |
 | Outlook/Hotmail/Live | OAuth2 (Device Code) | Auto (skipped) |
 | Zoho | App Password | IMAP APPEND |
 | ProtonMail | ProtonMail Bridge | IMAP APPEND |
