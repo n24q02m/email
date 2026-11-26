@@ -4,10 +4,10 @@
 # Setup: mise run setup
 
 [tools]
-node = "24"
+node = "26"
 bun = "latest"
 uv = "latest"
-python = "3.13"
+python = "3.14"
 
 [env]
 UV_LINK_MODE = "copy"
