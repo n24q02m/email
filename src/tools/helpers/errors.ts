@@ -65,6 +65,7 @@ interface RawError {
   name?: string
   code?: string | number
   status?: number
+  reason?: string
 }
 
 /**
@@ -110,6 +111,21 @@ export function enhanceError(error: unknown): EmailMCPError {
 
   const errObj: RawError = isRecord(error) ? error : {}
   const message = typeof errObj.message === 'string' ? errObj.message : 'Unknown error occurred'
+  const code = typeof errObj.code === 'string' ? errObj.code : ''
+  const closeReason = typeof errObj.reason === 'string' ? errObj.reason.trim() : ''
+
+  // The server dropped the socket before AUTHENTICATE. imapflow then throws
+  // "Already logged out" (authenticationFailed) as a second error. That is a
+  // closed session, not a completed password refusal.
+  if (message === 'Already logged out' || message === 'Unexpected close' || code.startsWith('ClosedAfterConnect')) {
+    return new EmailMCPError(
+      closeReason
+        ? `IMAP server closed the connection before login: ${closeReason}`
+        : 'IMAP server closed the connection before login',
+      'CONNECTION_ERROR',
+      'The IMAP server dropped the session before AUTHENTICATE. Check the host, port, and that IMAP is enabled. For Outlook, run `email auth outlook <address>`.'
+    )
+  }
 
   // IMAP authentication errors
   if (
