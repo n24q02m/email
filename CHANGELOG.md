@@ -2,6 +2,34 @@
 
 <!-- version list -->
 
+## v1.47.0-beta.1 (2026-11-27)
+
+### Bug Fixes
+
+- Sync Wave 0 README promo, docs links, and mise config
+  ([#1299](https://github.com/n24q02m/email/pull/1299),
+  [`38e1201`](https://github.com/n24q02m/email/commit/38e12016105b37a90cd61389e6dfcbe599c76bc1))
+
+- **deps**: Lock file maintenance ([#1297](https://github.com/n24q02m/email/pull/1297),
+  [`1d77444`](https://github.com/n24q02m/email/commit/1d77444997b1a9991c5f1ea5985592e0091b4f4d))
+
+- **deps**: Update minor dependencies ([#1295](https://github.com/n24q02m/email/pull/1295),
+  [`f49880e`](https://github.com/n24q02m/email/commit/f49880e1b6a223931d19452fbae59f672918b800))
+
+- **deps**: Update patch dependencies ([#1294](https://github.com/n24q02m/email/pull/1294),
+  [`52378b9`](https://github.com/n24q02m/email/commit/52378b93906182badac0767b1975178978ae4898))
+
+- **send**: Skip Sent APPEND for Outlook/Microsoft 365
+  ([#1298](https://github.com/n24q02m/email/pull/1298),
+  [`a9c3945`](https://github.com/n24q02m/email/commit/a9c394576db001663c58c53d374fee23f62d428a))
+
+### Features
+
+- Upgrade to MCP 2026-07-28 SDK v2 with skills, elicitation, and files
+  ([#1300](https://github.com/n24q02m/email/pull/1300),
+  [`bfc8ab3`](https://github.com/n24q02m/email/commit/bfc8ab326a1c96dac73a412edc90bb718dd85e25))
+
+
 ## v1.46.0 (2026-11-25)
 
 
