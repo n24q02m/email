@@ -89,13 +89,61 @@ function createClient(account: AccountConfig): ImapFlow {
       ? { user: account.email, accessToken: account.oauth2!.accessToken }
       : { user: account.email, pass: account.password }
 
-  return new ImapFlow({
+  const client = new ImapFlow({
     host: account.imap.host,
     port: account.imap.port,
     secure: account.imap.secure,
     auth,
     logger: false
   })
+  // close() rejects connect(), then startSession still calls authenticate() and
+  // emits "Already logged out". Without a listener Node exits the MCP process.
+  client.on('error', () => {
+    // The connect() rejection carries the close reason. This event is the duplicate.
+  })
+  return client
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object'
+}
+
+function prematureCloseDetail(error: unknown, client: ImapFlow): string | undefined {
+  if (isRecord(error) && typeof error.reason === 'string' && error.reason.trim()) {
+    return error.reason.trim()
+  }
+  const byeReason = (client as ImapFlow & { byeReason?: unknown }).byeReason
+  return typeof byeReason === 'string' && byeReason.trim() ? byeReason.trim() : undefined
+}
+
+function isPrematureClose(error: unknown): boolean {
+  if (!isRecord(error)) return false
+  const message = typeof error.message === 'string' ? error.message : ''
+  const code = typeof error.code === 'string' ? error.code : ''
+  return message === 'Unexpected close' || message === 'Already logged out' || code.startsWith('ClosedAfterConnect')
+}
+
+function prematureCloseError(error: unknown, client: ImapFlow): EmailMCPError {
+  const detail = prematureCloseDetail(error, client)
+  return new EmailMCPError(
+    detail
+      ? `IMAP server closed the connection before login: ${detail}`
+      : 'IMAP server closed the connection before login',
+    'CONNECTION_ERROR',
+    'The IMAP server dropped the session before AUTHENTICATE. Check the host, port, and that IMAP is enabled. For Outlook, run `email auth outlook <address>`.'
+  )
+}
+
+async function releaseClient(client: ImapFlow): Promise<void> {
+  try {
+    if (client.authenticated) {
+      await client.logout()
+    } else {
+      client.close()
+    }
+  } catch {
+    // Ignore logout and close errors. The session is already unusable.
+  }
 }
 
 /**
@@ -111,12 +159,11 @@ async function withConnection<T>(account: AccountConfig, fn: (client: ImapFlow) 
   try {
     await client.connect()
     return await fn(client)
+  } catch (error) {
+    if (isPrematureClose(error)) throw prematureCloseError(error, client)
+    throw error
   } finally {
-    try {
-      await client.logout()
-    } catch {
-      // Ignore logout errors
-    }
+    await releaseClient(client)
   }
 }
 

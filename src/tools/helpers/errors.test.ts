@@ -70,6 +70,23 @@ describe('enhanceError', () => {
     expect(result.code).toBe('AUTH_FAILED')
   })
 
+  it('maps a pre-login BYE to a closed session, not a password refusal', () => {
+    const result = enhanceError({
+      message: 'Already logged out',
+      authenticationFailed: true,
+      reason: 'Too many connections'
+    })
+    expect(result.code).toBe('CONNECTION_ERROR')
+    expect(result.message).toContain('Too many connections')
+    expect(result.message).not.toContain('Already logged out')
+  })
+
+  it('maps Unexpected close without a server reason', () => {
+    const result = enhanceError({ message: 'Unexpected close', code: 'ClosedAfterConnectText' })
+    expect(result.code).toBe('CONNECTION_ERROR')
+    expect(result.message).toBe('IMAP server closed the connection before login')
+  })
+
   it('handles connection refused', () => {
     const result = enhanceError({ message: 'ECONNREFUSED' })
     expect(result.code).toBe('CONNECTION_ERROR')

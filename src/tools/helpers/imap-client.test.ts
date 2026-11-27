@@ -2,11 +2,19 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AccountConfig } from './config.js'
 
 // --- Mocks (vi.hoisted ensures availability in vi.mock factory) ---
-const { mockClient, mockRelease } = vi.hoisted(() => {
+const { mockClient, mockRelease, imapErrorListeners } = vi.hoisted(() => {
   const mockRelease = vi.fn()
+  const imapErrorListeners: Array<(error: Error) => void> = []
   const mockClient = {
     connect: vi.fn().mockResolvedValue(undefined),
     logout: vi.fn().mockResolvedValue(undefined),
+    close: vi.fn(),
+    authenticated: true as boolean | string,
+    byeReason: undefined as string | undefined,
+    on: vi.fn((event: string, listener: (error: Error) => void) => {
+      if (event === 'error') imapErrorListeners.push(listener)
+      return mockClient
+    }),
     getMailboxLock: vi.fn().mockResolvedValue({ release: mockRelease }),
     capabilities: new Map<string, boolean | number>(),
     enabled: new Set<string>(),
@@ -23,7 +31,7 @@ const { mockClient, mockRelease } = vi.hoisted(() => {
     status: vi.fn(),
     append: vi.fn().mockResolvedValue({ destination: 'Sent', uid: 1 })
   }
-  return { mockClient, mockRelease }
+  return { mockClient, mockRelease, imapErrorListeners }
 })
 
 vi.mock('imapflow', () => ({
@@ -96,7 +104,10 @@ function _toAsyncIterable<T>(items: T[]): AsyncIterable<T> {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  imapErrorListeners.length = 0
   clearSentFolderCache()
+  mockClient.authenticated = true
+  mockClient.byeReason = undefined
   mockClient.connect.mockResolvedValue(undefined)
   mockClient.logout.mockResolvedValue(undefined)
   mockClient.getMailboxLock.mockResolvedValue({ release: mockRelease })
@@ -922,6 +933,28 @@ describe('connection lifecycle', () => {
     await expect(readEmail(account, 1, 'INBOX')).rejects.toThrow()
 
     expect(mockClient.logout).toHaveBeenCalled()
+  })
+
+  it('survives a session that closes before login', async () => {
+    mockClient.authenticated = false
+    mockClient.byeReason = 'Too many connections'
+    const late = Object.assign(new Error('Already logged out'), { authenticationFailed: true })
+    mockClient.connect.mockImplementation(async () => {
+      for (const listener of imapErrorListeners) listener(late)
+      throw Object.assign(new Error('Unexpected close'), {
+        code: 'ClosedAfterConnectTLS',
+        reason: 'Too many connections'
+      })
+    })
+
+    const results = await searchEmails([account], 'ALL', 'INBOX', 1)
+
+    expect(imapErrorListeners.length).toBeGreaterThan(0)
+    expect(mockClient.logout).not.toHaveBeenCalled()
+    expect(mockClient.close).toHaveBeenCalled()
+    expect(results).toHaveLength(0)
+    expect(results.unavailableAccounts?.[0]?.reason).toContain('Too many connections')
+    expect(results.unavailableAccounts?.[0]?.reason).not.toContain('Already logged out')
   })
 
   it('ignores logout errors', async () => {
