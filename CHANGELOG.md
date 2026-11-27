@@ -2,6 +2,14 @@
 
 <!-- version list -->
 
+## v1.47.0 (2026-11-27)
+
+### Bug Fixes
+
+- Unpin hull beta floor for stable release ([#1301](https://github.com/n24q02m/email/pull/1301),
+  [`98383b7`](https://github.com/n24q02m/email/commit/98383b7f36b87a1ac630768f5c7480af5eeacba4))
+
+
 ## v1.47.0-beta.1 (2026-11-27)
 
 ### Bug Fixes
