@@ -1,4 +1,3 @@
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { registerTools } from './registry.js'
 
@@ -13,7 +12,7 @@ vi.mock('../credential-state.js', () => ({
   getState: vi.fn(() => 'configured')
 }))
 
-describe('CallToolRequestSchema handler coverage', () => {
+describe('tools/call handler coverage', () => {
   let mockServer: any
   let callToolHandler: any
 
@@ -21,7 +20,7 @@ describe('CallToolRequestSchema handler coverage', () => {
     vi.clearAllMocks()
     mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })

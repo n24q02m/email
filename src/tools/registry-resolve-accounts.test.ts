@@ -4,7 +4,6 @@
  * instead of being captured once when the session's server is built.
  */
 
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { runAsNamespace } from '../tenant.js'
 import type { AccountConfig } from './helpers/config.js'
@@ -39,7 +38,7 @@ function callToolHandlerFor(startup: AccountConfig[], resolveAccounts: () => Pro
   registerTools(
     {
       setRequestHandler: vi.fn((schema, fn) => {
-        if (schema === CallToolRequestSchema) handler = fn
+        if (schema === 'tools/call') handler = fn
       })
     } as any,
     startup,

@@ -1,9 +1,3 @@
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema
-} from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { EXTERNAL_CONTENT_TOOLS } from './helpers/security.js'
 
@@ -38,10 +32,8 @@ describe('registerTools', () => {
     // Call registerTools
     registerTools(server, accounts)
 
-    // Find the handler for CallToolRequestSchema
-    const callToolHandler = server.setRequestHandler.mock.calls.find(
-      (call: any) => call[0] === CallToolRequestSchema
-    )?.[1]
+    // Find the handler for 'tools/call'
+    const callToolHandler = server.setRequestHandler.mock.calls.find((call: any) => call[0] === 'tools/call')?.[1]
 
     expect(callToolHandler).toBeDefined()
 
@@ -87,10 +79,10 @@ function createMockServerWithHandlers() {
   }
 }
 
-describe('ListToolsRequestSchema handler', () => {
+describe('tools/list handler', () => {
   it('should return exactly 5 tools with correct names', async () => {
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(ListToolsRequestSchema)
+    const handler = getHandler('tools/list')
 
     expect(handler).toBeDefined()
 
@@ -103,7 +95,7 @@ describe('ListToolsRequestSchema handler', () => {
 
   it('declares outputSchema for every tool except help', async () => {
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(ListToolsRequestSchema)
+    const handler = getHandler('tools/list')
 
     const result = await handler({})
 
@@ -117,10 +109,10 @@ describe('ListToolsRequestSchema handler', () => {
   })
 })
 
-describe('ListResourcesRequestSchema handler', () => {
+describe('resources/list handler', () => {
   it('should return resources with correct URIs and mimeType', async () => {
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(ListResourcesRequestSchema)
+    const handler = getHandler('resources/list')
 
     expect(handler).toBeDefined()
 
@@ -146,10 +138,10 @@ describe('ListResourcesRequestSchema handler', () => {
   })
 })
 
-describe('ReadResourceRequestSchema handler', () => {
+describe('resources/read handler', () => {
   it('should throw for unknown resource URI', async () => {
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(ReadResourceRequestSchema)
+    const handler = getHandler('resources/read')
 
     expect(handler).toBeDefined()
 
@@ -159,7 +151,7 @@ describe('ReadResourceRequestSchema handler', () => {
   })
 })
 
-describe('CallToolRequestSchema handler - successful tool calls', () => {
+describe('tools/call handler - successful tool calls', () => {
   it('clears the live account snapshot after a successful config reset', async () => {
     const { handleConfig } = await import('./composite/config.js')
     const { folders } = await import('./composite/folders.js')
@@ -178,7 +170,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
     } as any
     const accounts = [{ email: 'user@example.com' }] as any
     registerTools(server, accounts)
-    const handler = handlers.get(CallToolRequestSchema)
+    const handler = handlers.get('tools/call')
 
     await handler({
       params: { name: 'config', arguments: { action: 'setup_reset' } }
@@ -197,7 +189,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
     vi.mocked(messages).mockResolvedValue(mockResult)
 
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -227,7 +219,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
     vi.mocked(folders).mockResolvedValue(mockResult)
 
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -251,7 +243,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
     vi.mocked(messages).mockResolvedValue(mockResult)
 
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -283,7 +275,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
     vi.mocked(attachments).mockResolvedValue(mockResult)
 
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -308,7 +300,7 @@ describe('CallToolRequestSchema handler - successful tool calls', () => {
   })
 })
 
-describe('CallToolRequestSchema handler - tool execution error', () => {
+describe('tools/call handler - tool execution error', () => {
   it('should catch and format EmailMCPError thrown by tool without enhancement', async () => {
     const { messages } = await import('./composite/messages.js')
     const { EmailMCPError } = await import('./helpers/errors.js')
@@ -316,7 +308,7 @@ describe('CallToolRequestSchema handler - tool execution error', () => {
     vi.mocked(messages).mockRejectedValue(customError)
 
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -335,7 +327,7 @@ describe('CallToolRequestSchema handler - tool execution error', () => {
     vi.mocked(messages).mockRejectedValue(new Error('IMAP connection failed'))
 
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -349,10 +341,10 @@ describe('CallToolRequestSchema handler - tool execution error', () => {
   })
 })
 
-describe('CallToolRequestSchema handler - unknown tool', () => {
+describe('tools/call handler - unknown tool', () => {
   it('should return error for unknown tool name', async () => {
     const { getHandler } = createMockServerWithHandlers()
-    const handler = getHandler(CallToolRequestSchema)
+    const handler = getHandler('tools/call')
 
     const result = await handler({
       params: {
@@ -403,7 +395,7 @@ describe('structuredContent envelope marker covers every EXTERNAL_CONTENT_TOOLS 
       vi.mocked(mod[fixture.exportName]).mockResolvedValue(fixture.mockResult)
 
       const { getHandler } = createMockServerWithHandlers()
-      const handler = getHandler(CallToolRequestSchema)
+      const handler = getHandler('tools/call')
 
       const result = await handler({
         params: { name: toolName, arguments: fixture.args }

@@ -1,4 +1,3 @@
-import { CallToolRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { EmailMCPError } from './helpers/errors.js'
 import { registerTools } from './registry.js'
@@ -24,10 +23,10 @@ describe('registry.ts coverage - additional paths', () => {
     let readResourceHandler: any
     const mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
-        if (schema === ReadResourceRequestSchema) {
+        if (schema === 'resources/read') {
           readResourceHandler = handler
         }
       })
@@ -36,7 +35,7 @@ describe('registry.ts coverage - additional paths', () => {
     return { callToolHandler, readResourceHandler }
   }
 
-  describe('CallToolRequestSchema error handling', () => {
+  describe('tools/call error handling', () => {
     it('should handle non-Error objects thrown by tool handlers', async () => {
       const { messages } = await import('./composite/messages.js')
       // Throwing a string to trigger the generic error path in enhanceError
@@ -119,7 +118,7 @@ describe('registry.ts coverage - additional paths', () => {
     })
   })
 
-  describe('ReadResourceRequestSchema', () => {
+  describe('resources/read', () => {
     it('should throw Resource not found for invalid URIs', async () => {
       const { readResourceHandler } = setupHandler()
 

@@ -9,22 +9,16 @@
 import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import type { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema
-} from '@modelcontextprotocol/sdk/types.js'
+import type { CallToolResult, McpServer, Server, ServerContext, Tool } from '@modelcontextprotocol/server'
 import { getState } from '../credential-state.js'
 import { callerNamespace } from '../tenant.js'
 import { type AttachmentsInput, attachments } from './composite/attachments.js'
 import { type ConfigInput, handleConfig } from './composite/config.js'
 import { type FoldersInput, folders } from './composite/folders.js'
 import { type MessagesInput, messages } from './composite/messages.js'
-// Import mega tools
 import { type AccountConfig, loadConfig } from './helpers/config.js'
 import { isDraftOnly, restrictTool } from './helpers/draft-only.js'
+import { confirmSensitiveOperation } from './helpers/elicitation.js'
 import {
   aiReadableMessage,
   EmailMCPError,
@@ -345,7 +339,7 @@ export interface RegisterToolsOptions {
   resolveAccounts?: () => Promise<AccountConfig[]>
 }
 
-function notConfiguredResult(text: string) {
+function notConfiguredResult(text: string): CallToolResult {
   return {
     content: [
       {
@@ -357,50 +351,64 @@ function notConfiguredResult(text: string) {
   }
 }
 
-export function registerTools(server: Server, initialAccounts: AccountConfig[], options: RegisterToolsOptions = {}) {
+export function registerTools(
+  server: McpServer | Server,
+  initialAccounts: AccountConfig[],
+  options: RegisterToolsOptions = {}
+) {
   const { resolveAccounts } = options
   // Mutable reference: updated when credentials are saved after startup
   let accounts = initialAccounts
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({
-    tools: isDraftOnly() ? TOOLS.map(restrictTool) : TOOLS
+  const rpcServer = 'server' in server ? server.server : server
+
+  rpcServer.setRequestHandler('tools/list', async () => ({
+    tools: (isDraftOnly() ? TOOLS.map(restrictTool) : TOOLS) as unknown as Tool[]
   }))
 
-  // Resources handlers for full documentation
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
-    resources: FORMATTED_RESOURCES
-  }))
-
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-    const { uri } = request.params
-    const resource = RESOURCES.find((r) => r.uri === uri)
-
-    if (!resource) {
-      throw new EmailMCPError(
-        `Resource not found: ${uri}`,
-        'RESOURCE_NOT_FOUND',
-        `Available: ${AVAILABLE_RESOURCE_URIS_STRING}`
-      )
+  // Register static doc resources through McpServer when available so we coexist
+  // with SkillsExtension (`skill://` resource templates); fall back to low-level
+  // Server request handlers for unit-test mocks or direct Server instances.
+  if ('registerResource' in server && typeof server.registerResource === 'function') {
+    for (const resource of RESOURCES) {
+      server.registerResource(resource.name, resource.uri, { mimeType: 'text/markdown' }, async () => ({
+        contents: [
+          {
+            uri: resource.uri,
+            mimeType: 'text/markdown',
+            text: await readFile(join(DOCS_DIR, resource.file), 'utf-8')
+          }
+        ]
+      }))
     }
+  } else {
+    rpcServer.setRequestHandler('resources/list', async () => ({
+      resources: FORMATTED_RESOURCES
+    }))
 
-    const content = await readFile(join(DOCS_DIR, resource.file), 'utf-8')
-    return {
-      contents: [{ uri, mimeType: 'text/markdown', text: content }]
-    }
-  })
+    rpcServer.setRequestHandler('resources/read', async (request) => {
+      const { uri } = request.params
+      const resource = RESOURCES.find((r) => r.uri === uri)
 
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      if (!resource) {
+        throw new EmailMCPError(
+          `Resource not found: ${uri}`,
+          'RESOURCE_NOT_FOUND',
+          `Available: ${AVAILABLE_RESOURCE_URIS_STRING}`
+        )
+      }
+
+      const content = await readFile(join(DOCS_DIR, resource.file), 'utf-8')
+      return {
+        contents: [{ uri, mimeType: 'text/markdown', text: content }]
+      }
+    })
+  }
+
+  rpcServer.setRequestHandler('tools/call', async (request, ctx?: ServerContext) => {
     const { name, arguments: args } = request.params
 
     if (!args) {
-      return {
-        content: [
-          {
-            type: 'text',
-            text: 'Error: No arguments provided'
-          }
-        ],
-        isError: true
-      }
+      return notConfiguredResult('Error: No arguments provided')
     }
 
     try {
@@ -430,6 +438,23 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[], 
       }
 
       const configInput = name === 'config' ? (args as unknown as ConfigInput) : undefined
+      const confirmation = await confirmSensitiveOperation(name, args as Record<string, unknown>, ctx)
+      if (confirmation.status === 'input_required') {
+        return confirmation.result as never
+      }
+      if (confirmation.status === 'cancelled') {
+        const cancelledPayload: Record<string, unknown> = {
+          cancelled: true,
+          action: (args as Record<string, unknown>).action,
+          reason: confirmation.reason,
+          message: `Operation cancelled (${confirmation.reason})`
+        }
+        return {
+          content: [{ type: 'text', text: wrapToolResult(name, JSON.stringify(cancelledPayload, null, 2)) }],
+          structuredContent: markStructuredContent(name, cancelledPayload)
+        }
+      }
+
       const result = await handler(callAccounts, args)
 
       // A server instance is reused for every MCP request in one session. After a
@@ -457,15 +482,7 @@ export function registerTools(server: Server, initialAccounts: AccountConfig[], 
     } catch (error) {
       const enhancedError = error instanceof EmailMCPError ? error : enhanceError(error)
 
-      return {
-        content: [
-          {
-            type: 'text',
-            text: aiReadableMessage(enhancedError)
-          }
-        ],
-        isError: true
-      }
+      return notConfiguredResult(aiReadableMessage(enhancedError))
     }
   })
 }

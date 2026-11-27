@@ -20,11 +20,17 @@
  * subcommand); bearer tokens never go into config.
  */
 
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { type HttpAuthConfig, isLoopbackHost, type RunHttpServerOptions, runHttpServer } from '@n24q02m/hull'
+import { McpServer } from '@modelcontextprotocol/server'
+import {
+  attachSkillsProvider,
+  type HttpAuthConfig,
+  isLoopbackHost,
+  type RunHttpServerOptions,
+  runHttpServer
+} from '@n24q02m/hull'
 import { resolveCredentialState } from '../credential-state.js'
 import { getVersion } from '../init-server.js'
+import { resolveSkillsDir } from '../skills-dir.js'
 import { discoverAccountsFile } from '../tools/helpers/accounts-file.js'
 import { type AccountConfig, loadCallerConfig, loadConfig } from '../tools/helpers/config.js'
 import { type RegisterToolsOptions, registerTools } from '../tools/registry.js'
@@ -119,13 +125,17 @@ export async function startHttp(): Promise<void> {
     accounts = await loadConfig()
   }
 
+  const bootstrapServer = new McpServer({ name: `@n24q02m/${SERVER_NAME}`, version: getVersion() })
+  const skillCatalog = await attachSkillsProvider(bootstrapServer, resolveSkillsDir())
+
   const serverFactory = (): McpServer => {
-    const server = new Server(
+    const server = new McpServer(
       { name: `@n24q02m/${SERVER_NAME}`, version: getVersion() },
       { capabilities: { tools: {}, resources: {} } }
     )
+    skillCatalog.attach(server)
     registerTools(server, accounts, toolOptions)
-    return server as unknown as McpServer
+    return server
   }
 
   // Port resolution order: PORT (explicit) -> MCP_PORT (Cloudflare container

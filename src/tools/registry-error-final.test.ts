@@ -1,4 +1,3 @@
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EmailMCPError } from './helpers/errors.js'
 import { registerTools } from './registry.js'
@@ -27,7 +26,7 @@ describe('registry.ts coverage - final error paths', () => {
     let callToolHandler: any
     const mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })
@@ -40,7 +39,7 @@ describe('registry.ts coverage - final error paths', () => {
     vi.clearAllMocks()
   })
 
-  describe('CallToolRequestSchema line 400 catch block', () => {
+  describe('tools/call line 400 catch block', () => {
     it('should catch and format EmailMCPError', async () => {
       const { messages } = await import('./composite/messages.js')
       const customError = new EmailMCPError('Tool failed', 'TOOL_ERROR', 'Try again')

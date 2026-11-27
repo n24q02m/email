@@ -22,9 +22,8 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import net from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
-import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js'
+import { type CallToolResult, Client } from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 // ---------------------------------------------------------------------------
@@ -183,10 +182,8 @@ async function openSession(env: Record<string, string>): Promise<Session> {
   return { client, transport, stderr: () => stderr }
 }
 
-// `callTool` parses the reply with `CallToolResultSchema`, yet its return type also
-// carries the legacy `{ toolResult }` shape; parse again to get the type that was checked.
-function asToolResult(result: Awaited<ReturnType<Client['callTool']>>): ToolResult {
-  return CallToolResultSchema.parse(result)
+function asToolResult(result: CallToolResult): ToolResult {
+  return result as unknown as ToolResult
 }
 
 function parseToolJson(result: ToolResult): unknown {

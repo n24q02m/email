@@ -1,10 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema
-} from '@modelcontextprotocol/sdk/types.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 // Mock dependencies before importing registry
@@ -43,7 +37,7 @@ describe('registry.ts - help tool error handling', () => {
 
     mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })
@@ -103,7 +97,7 @@ describe('registry.ts - ReadResource success', () => {
 
     mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === ReadResourceRequestSchema) {
+        if (schema === 'resources/read') {
           readResourceHandler = handler
         }
       })
@@ -143,7 +137,7 @@ describe('registry.ts - help tool success', () => {
 
     mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })
@@ -184,7 +178,7 @@ describe('registry.ts - help tool error handling edge case', () => {
     vi.clearAllMocks()
     mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })
@@ -224,12 +218,10 @@ describe('registry.ts - core registration', () => {
     }
   })
 
-  it('should register ListToolsRequestSchema and ListResourcesRequestSchema', async () => {
+  it('should register tools/list and resources/list', async () => {
     registerTools(mockServer, [])
 
-    const listToolsCall = mockServer.setRequestHandler.mock.calls.find(
-      (call: any[]) => call[0] === ListToolsRequestSchema
-    )
+    const listToolsCall = mockServer.setRequestHandler.mock.calls.find((call: any[]) => call[0] === 'tools/list')
     expect(listToolsCall).toBeDefined()
     expect(listToolsCall[1]).toBeTypeOf('function')
 
@@ -242,7 +234,7 @@ describe('registry.ts - core registration', () => {
     expect(listToolsResult.tools[0]).toHaveProperty('description')
 
     const listResourcesCall = mockServer.setRequestHandler.mock.calls.find(
-      (call: any[]) => call[0] === ListResourcesRequestSchema
+      (call: any[]) => call[0] === 'resources/list'
     )
     expect(listResourcesCall).toBeDefined()
     expect(listResourcesCall[1]).toBeTypeOf('function')
@@ -254,5 +246,55 @@ describe('registry.ts - core registration', () => {
     expect(listResourcesResult.resources.length).toBeGreaterThan(0)
     expect(listResourcesResult.resources[0]).toHaveProperty('uri')
     expect(listResourcesResult.resources[0]).toHaveProperty('name')
+  })
+
+  it('registers doc resources via McpServer.registerResource and handles elicitation outcomes', async () => {
+    const handlers = new Map<string, (...args: any[]) => any>()
+    const registeredResources: Array<{ name: string; uri: string; read: () => Promise<any> }> = []
+    const mcpLikeServer = {
+      registerResource: vi.fn((name: string, uri: string, _cfg: unknown, read: () => Promise<any>) => {
+        registeredResources.push({ name, uri, read })
+      }),
+      server: {
+        setRequestHandler: vi.fn((method: string, handler: (...args: any[]) => any) => {
+          handlers.set(method, handler)
+        })
+      }
+    }
+    vi.mocked(readFile).mockResolvedValue('# Doc content')
+
+    registerTools(mcpLikeServer as any, [{ email: 'user@example.com' }] as any)
+    expect(registeredResources).toHaveLength(5)
+    expect(handlers.has('resources/list')).toBe(false)
+    const firstRead = await registeredResources[0].read()
+    expect(firstRead.contents[0].text).toBe('# Doc content')
+
+    const callTool = handlers.get('tools/call')!
+    // Envelope without elicitation capability falls back cleanly when client rejects push/MRTR
+    const challengeCtx = {
+      mcpReq: {
+        id: 1,
+        method: 'tools/call',
+        envelope: { 'io.modelcontextprotocol/protocolVersion': '2026-07-28' }
+      }
+    }
+    const mrtrResult = await callTool(
+      { params: { name: 'messages', arguments: { action: 'trash', uid: 42 } } },
+      challengeCtx
+    )
+    expect(mrtrResult.resultType).toBe('input_required')
+
+    const declinedCtx = {
+      mcpReq: {
+        id: 2,
+        method: 'tools/call',
+        inputResponses: { confirm_trash_email: { action: 'decline' } }
+      }
+    }
+    const declinedResult = await callTool(
+      { params: { name: 'messages', arguments: { action: 'trash', uid: 42 } } },
+      declinedCtx
+    )
+    expect(declinedResult.structuredContent).toMatchObject({ cancelled: true, reason: 'declined', action: 'trash' })
   })
 })

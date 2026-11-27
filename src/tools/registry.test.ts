@@ -1,9 +1,3 @@
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema
-} from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { registerTools } from './registry.js'
 
@@ -206,9 +200,9 @@ describe('registerTools function', () => {
     const calls = mockServer.setRequestHandler.mock.calls
     const registeredSchemas = calls.map((call) => call[0])
 
-    expect(registeredSchemas).toContain(ListToolsRequestSchema)
-    expect(registeredSchemas).toContain(ListResourcesRequestSchema)
-    expect(registeredSchemas).toContain(ReadResourceRequestSchema)
-    expect(registeredSchemas).toContain(CallToolRequestSchema)
+    expect(registeredSchemas).toContain('tools/list')
+    expect(registeredSchemas).toContain('resources/list')
+    expect(registeredSchemas).toContain('resources/read')
+    expect(registeredSchemas).toContain('tools/call')
   })
 })

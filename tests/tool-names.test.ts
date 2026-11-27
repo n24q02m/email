@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
+import { Client } from '@modelcontextprotocol/client'
+import { StdioClientTransport } from '@modelcontextprotocol/client/stdio'
 import { afterEach, describe, expect, it } from 'vitest'
 
 function parseToolNames(raw: string): string[] {
@@ -24,7 +24,9 @@ const EXPECTED_RESOURCES = [
   'email://docs/folders',
   'email://docs/attachments',
   'email://docs/help',
-  'email://docs/config'
+  'email://docs/config',
+  'skill://follow-up/SKILL.md',
+  'skill://inbox-review/SKILL.md'
 ]
 const EXPECTED_MESSAGE_ACTIONS = [
   'search',
