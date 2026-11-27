@@ -1,4 +1,3 @@
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EmailMCPError } from './helpers/errors.js'
 import { registerTools } from './registry.js'
@@ -31,7 +30,7 @@ describe('registry.ts catch block coverage', () => {
     let callToolHandler: any
     const mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })
@@ -171,13 +170,12 @@ describe('registry.ts top-level branches', () => {
     })
 
     const { registerTools } = await import('./registry.js')
-    const { ReadResourceRequestSchema } = await import('@modelcontextprotocol/sdk/types.js')
     const { readFile } = await import('node:fs/promises')
 
     let readHandler: any
     const mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === ReadResourceRequestSchema) {
+        if (schema === 'resources/read') {
           readHandler = handler
         }
       })

@@ -32,6 +32,7 @@ COPY --from=builder /app/bin /usr/local/lib/node_modules/@n24q02m/email/bin
 COPY --from=builder /app/package.json /usr/local/lib/node_modules/@n24q02m/email/
 COPY --from=builder /app/README.md /usr/local/lib/node_modules/@n24q02m/email/
 COPY --from=builder /app/LICENSE /usr/local/lib/node_modules/@n24q02m/email/
+COPY --from=builder /app/skills /usr/local/lib/node_modules/@n24q02m/email/skills
 COPY --from=builder /app/node_modules /usr/local/lib/node_modules/@n24q02m/email/node_modules
 
 # Create symlinks for CLI (email + legacy better-email-mcp alias) and grant the

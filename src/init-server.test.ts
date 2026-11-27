@@ -2,11 +2,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const startHttpMock = vi.fn()
 const connectMock = vi.fn().mockResolvedValue(undefined)
-const ServerCtorMock = vi.fn(function (this: any, _info: unknown, _opts: unknown) {
+const McpServerCtorMock = vi.fn(function (this: any, _info: unknown, _opts: unknown) {
   this.connect = connectMock
-  this.setRequestHandler = vi.fn()
+  this.registerResource = vi.fn()
+  this.registerCapabilities = vi.fn()
+  this.server = { setRequestHandler: vi.fn() }
 })
 const StdioServerTransportCtorMock = vi.fn(function (this: any) {})
+const attachSkillsProviderMock = vi.fn().mockResolvedValue({ attach: vi.fn(), entries: [] })
 const registerToolsMock = vi.fn()
 const resolveCredentialStateMock = vi.fn().mockResolvedValue('configured')
 const loadConfigMock = vi.fn().mockResolvedValue([])
@@ -16,12 +19,16 @@ vi.mock('./transports/http.js', () => ({
   startHttp: startHttpMock
 }))
 
-vi.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
-  Server: ServerCtorMock
+vi.mock('@modelcontextprotocol/server', () => ({
+  McpServer: McpServerCtorMock
 }))
 
-vi.mock('@modelcontextprotocol/sdk/server/stdio.js', () => ({
+vi.mock('@modelcontextprotocol/server/stdio', () => ({
   StdioServerTransport: StdioServerTransportCtorMock
+}))
+
+vi.mock('@n24q02m/hull', () => ({
+  attachSkillsProvider: attachSkillsProviderMock
 }))
 
 vi.mock('./tools/registry.js', () => ({
@@ -102,10 +109,11 @@ describe('initServer', () => {
     process.env.EMAIL_CREDENTIALS = 'user@example.com:app-pass'
     const { initServer } = await import('./init-server.js')
     await initServer()
-    expect(ServerCtorMock).toHaveBeenCalledWith(
+    expect(McpServerCtorMock).toHaveBeenCalledWith(
       expect.objectContaining({ name: 'email' }),
       expect.objectContaining({ capabilities: expect.any(Object) })
     )
+    expect(attachSkillsProviderMock).toHaveBeenCalledWith(expect.anything(), expect.stringContaining('skills'))
     expect(registerToolsMock).toHaveBeenCalled()
     expect(StdioServerTransportCtorMock).toHaveBeenCalled()
     expect(connectMock).toHaveBeenCalled()

@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import { CallToolRequestSchema, ReadResourceRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { EmailMCPError } from './helpers/errors.js'
 import { registerTools } from './registry.js'
@@ -25,10 +24,10 @@ describe('registry.ts coverage - error and edge paths', () => {
     let readResourceHandler: any
     const mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
-        if (schema === ReadResourceRequestSchema) {
+        if (schema === 'resources/read') {
           readResourceHandler = handler
         }
       })
@@ -41,7 +40,7 @@ describe('registry.ts coverage - error and edge paths', () => {
     vi.clearAllMocks()
   })
 
-  describe('ReadResourceRequestSchema', () => {
+  describe('resources/read', () => {
     it('should successfully read a resource', async () => {
       const { readResourceHandler } = setupHandler()
       vi.mocked(readFile).mockResolvedValue('mock documentation content')
@@ -121,7 +120,7 @@ describe('registry.ts coverage - error and edge paths', () => {
     })
   })
 
-  describe('CallToolRequestSchema paths', () => {
+  describe('tools/call paths', () => {
     it('should handle missing arguments', async () => {
       const { callToolHandler } = setupHandler([{ email: 'test@example.com' }])
 

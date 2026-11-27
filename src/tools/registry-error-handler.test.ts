@@ -1,4 +1,3 @@
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { EmailMCPError } from './helpers/errors.js'
 import { registerTools } from './registry.js'
@@ -13,7 +12,7 @@ vi.mock('../credential-state.js', () => ({
   getState: vi.fn(() => 'configured')
 }))
 
-describe('CallToolRequestSchema handler - error handling', () => {
+describe('tools/call handler - error handling', () => {
   it('should return a properly formatted MCP error response for EmailMCPError', async () => {
     const { messages } = await import('./composite/messages.js')
     const customError = new EmailMCPError('Tool failed', 'TOOL_ERROR', 'Try again')
@@ -24,7 +23,7 @@ describe('CallToolRequestSchema handler - error handling', () => {
     }
     registerTools(mockServer as any, [])
 
-    const call = mockServer.setRequestHandler.mock.calls.find((call) => call[0] === CallToolRequestSchema)
+    const call = mockServer.setRequestHandler.mock.calls.find((call) => call[0] === 'tools/call')
     const handler = call![1]
 
     const result = await handler({
@@ -54,7 +53,7 @@ describe('CallToolRequestSchema handler - error handling', () => {
     }
     registerTools(mockServer as any, [])
 
-    const call = mockServer.setRequestHandler.mock.calls.find((call) => call[0] === CallToolRequestSchema)
+    const call = mockServer.setRequestHandler.mock.calls.find((call) => call[0] === 'tools/call')
     const handler = call![1]
 
     const result = await handler({

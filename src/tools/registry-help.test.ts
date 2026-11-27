@@ -1,5 +1,4 @@
 import { readFile } from 'node:fs/promises'
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { isValidToolName } from './helpers/security.js'
 import { registerTools } from './registry.js'
@@ -39,7 +38,7 @@ describe('handleHelp documentation tool', () => {
     let callToolHandler: any
     const mockServer = {
       setRequestHandler: vi.fn((schema, handler) => {
-        if (schema === CallToolRequestSchema) {
+        if (schema === 'tools/call') {
           callToolHandler = handler
         }
       })

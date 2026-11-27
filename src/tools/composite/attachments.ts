@@ -3,6 +3,7 @@
  * List and download email attachments
  */
 
+import { buildFilePayload } from '@n24q02m/hull'
 import type { AccountConfig } from '../helpers/config.js'
 import { resolveSingleAccount } from '../helpers/config.js'
 import { createUnknownActionError, EmailMCPError, withErrorHandling } from '../helpers/errors.js'
@@ -86,12 +87,17 @@ async function handleDownload(accounts: AccountConfig[], input: AttachmentsInput
   const folder = input.folder || 'INBOX'
 
   const attachment = await getAttachment(account, input.uid, folder, input.filename)
+  const file = buildFilePayload(Buffer.from(attachment.content_base64, 'base64'), attachment.filename, {
+    mimeType: attachment.content_type,
+    uri: `email://${encodeURIComponent(account.id)}/${encodeURIComponent(folder)}/${input.uid}/attachments/${encodeURIComponent(attachment.filename)}`
+  })
 
   return {
     action: 'download',
     account: account.email,
     uid: input.uid,
     folder,
-    ...attachment
+    ...attachment,
+    file
   }
 }

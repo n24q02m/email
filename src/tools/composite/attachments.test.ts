@@ -109,6 +109,14 @@ describe('attachments - download', () => {
     expect(result.action).toBe('download')
     expect(result.content_base64).toBe('base64content')
     expect(result.filename).toBe('report.pdf')
+    expect(result.file).toEqual({
+      extension: 'io.modelcontextprotocol/files',
+      uri: 'email://user1_gmail_com/INBOX/10/attachments/report.pdf',
+      name: 'report.pdf',
+      mimeType: 'application/pdf',
+      sizeBytes: Buffer.from('base64content', 'base64').byteLength,
+      blob: Buffer.from('base64content', 'base64').toString('base64')
+    })
   })
 
   it('throws when filename is missing', async () => {

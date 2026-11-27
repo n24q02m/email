@@ -14,9 +14,11 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
+import { McpServer } from '@modelcontextprotocol/server'
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
+import { attachSkillsProvider } from '@n24q02m/hull'
 import { resolveCredentialState } from './credential-state.js'
+import { resolveSkillsDir } from './skills-dir.js'
 import { discoverAccountsFile } from './tools/helpers/accounts-file.js'
 import { loadConfig } from './tools/helpers/config.js'
 import { registerTools } from './tools/registry.js'
@@ -96,10 +98,11 @@ Documentation: https://docs.n24q02m.com/servers/email/
   // Direct MCP SDK stdio transport (no daemon proxy hop).
   await resolveCredentialState()
   const accounts = await loadConfig()
-  const server = new Server(
+  const server = new McpServer(
     { name: SERVER_NAME, version: getVersion() },
     { capabilities: { tools: {}, resources: {} } }
   )
+  await attachSkillsProvider(server, resolveSkillsDir())
   registerTools(server, accounts)
   const transport = new StdioServerTransport()
   await server.connect(transport)

@@ -28,9 +28,9 @@
   "scripts": {
     "build": "tsc --build tsconfig.build.json && node scripts/build-cli.js",
     "dev": "tsx watch scripts/start-server.ts",
-    "provider:accept": "uv run --with mcp==2.0.0 python -B scripts/provider_acceptance.py",
+    "provider:accept": "uv run --with \"mcp>=2.3.0\" python -B scripts/provider_acceptance.py",
     "provider:accept:lint": "uv run --with ruff==0.16.2 ruff check scripts/provider_acceptance.py scripts/test_provider_acceptance.py",
-    "provider:accept:test": "uv run --with mcp==2.0.0 --with pytest==9.1.1 --with coverage==7.10.6 coverage run --include=scripts/provider_acceptance.py -m pytest -q scripts/test_provider_acceptance.py && uv run --with coverage==7.10.6 coverage report --show-missing --fail-under=95",
+    "provider:accept:test": "uv run --with \"mcp>=2.3.0\" --with pytest==9.1.1 --with coverage==7.10.6 coverage run --include=scripts/provider_acceptance.py -m pytest -q scripts/test_provider_acceptance.py && uv run --with coverage==7.10.6 coverage report --show-missing --fail-under=95",
     "test": "vitest --passWithNoTests",
     "test:watch": "vitest watch",
     "test:coverage": "vitest --coverage",
@@ -58,29 +58,30 @@
   "files": [
     "build/",
     "bin/",
+    "skills/",
     "npm-shrinkwrap.json",
     "README.md",
     "LICENSE"
   ],
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.2",
-    "@n24q02m/hull": "^0.11.0",
+    "@modelcontextprotocol/node": "^2.1.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "@n24q02m/hull": "^0.12.0-beta.1",
     "html-to-text": "^10.0.1",
     "imapflow": "^1.7.8",
     "mailparser": "^3.14.5",
     "marked": "^18.2.1",
     "nodemailer": "^10.6.0",
     "sanitize-html": "^2.18.2",
-    "smol-toml": "^1.9.1"
+    "smol-toml": "^1.9.1",
+    "zod": "^4.2.0"
   },
   "trustedDependencies": [
     "esbuild"
   ],
-  "overrides": {
-    "@modelcontextprotocol/sdk": "^1.32.2"
-  },
   "devDependencies": {
     "@biomejs/biome": "^2.6.8",
+    "@modelcontextprotocol/client": "^2.4.0",
     "@types/html-to-text": "^9.0.4",
     "@types/mailparser": "^3.9.0",
     "@types/node": "^26.6.6",

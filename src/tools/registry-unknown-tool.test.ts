@@ -1,4 +1,3 @@
-import { CallToolRequestSchema } from '@modelcontextprotocol/sdk/types.js'
 import { describe, expect, it, vi } from 'vitest'
 import { registerTools } from './registry.js'
 
@@ -21,9 +20,9 @@ describe('registerTools', () => {
     // Call the function under test
     registerTools(mockServer as any, mockAccounts)
 
-    // Find the handler for CallToolRequestSchema
+    // Find the handler for 'tools/call'
     // The first argument to setRequestHandler is the schema, the second is the handler
-    const call = mockServer.setRequestHandler.mock.calls.find((call) => call[0] === CallToolRequestSchema)
+    const call = mockServer.setRequestHandler.mock.calls.find((call) => call[0] === 'tools/call')
     expect(call).toBeDefined()
 
     const handler = call![1]
