@@ -102,6 +102,14 @@ function discoverSettings(email: string): { imap: ServerConfig; smtp: ServerConf
     }
   }
 
+  // Any other OAuth-routed Microsoft domain -- a regional consumer domain such
+  // as hotmail.fr, or one declared via OUTLOOK_EXTRA_DOMAINS -- is served by
+  // the same Outlook endpoints. Without this, the account is routed to OAuth
+  // but then dropped because no IMAP/SMTP servers can be found for it.
+  if (isOutlookDomain(email)) {
+    return OUTLOOK_SETTINGS
+  }
+
   return null
 }
 
