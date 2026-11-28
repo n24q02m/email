@@ -69,6 +69,14 @@ describe('parseCredentials', () => {
     expect(result[0]!.imap.host).toBe('outlook.office365.com')
   })
 
+  it('auto-discovers a regional Hotmail domain as Outlook with OAuth2', async () => {
+    const result = await parseCredentials('user@hotmail.fr:pass')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.imap).toEqual({ host: 'outlook.office365.com', port: 993, secure: true })
+    expect(result[0]!.smtp).toEqual({ host: 'smtp.office365.com', port: 587, secure: false })
+    expect(result[0]!.authType).toBe('oauth2')
+  })
+
   it('auto-discovers Yahoo settings', async () => {
     const result = await parseCredentials('user@yahoo.com:pass')
     expect(result[0]!.imap.host).toBe('imap.mail.yahoo.com')
@@ -150,6 +158,13 @@ describe('parseCredentials', () => {
     expect(result[0]!.authType).toBe('oauth2')
   })
 
+  it('parses a regional Hotmail email-only entry as OAuth2 account', async () => {
+    const result = await parseCredentials('user@hotmail.fr')
+    expect(result).toHaveLength(1)
+    expect(result[0]!.authType).toBe('oauth2')
+    expect(result[0]!.imap.host).toBe('outlook.office365.com')
+  })
+
   it('skips invalid entries with only one part', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const result = await parseCredentials('justanemail')
@@ -198,12 +213,24 @@ describe('account construction without a discoverable provider', () => {
     )
   })
 
-  it('skips an email-only entry on an extra OAuth domain with no known servers', async () => {
+  it('routes an email-only entry on an extra OAuth domain to the Outlook servers', async () => {
     process.env.OUTLOOK_EXTRA_DOMAINS = 'contoso.example'
-    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
 
-    expect(await parseCredentials('user@contoso.example')).toEqual([])
-    expect(spy).toHaveBeenCalledWith('Skipping invalid credential entry (expected email:password)')
+    const result = await parseCredentials('user@contoso.example')
+
+    expect(result).toHaveLength(1)
+    expect(result[0]!.authType).toBe('oauth2')
+    expect(result[0]!.imap).toEqual({ host: 'outlook.office365.com', port: 993, secure: true })
+    expect(result[0]!.smtp).toEqual({ host: 'smtp.office365.com', port: 587, secure: false })
+  })
+
+  it('builds an extra OAuth domain account without a custom host as OAuth2', async () => {
+    process.env.OUTLOOK_EXTRA_DOMAINS = 'contoso.example'
+
+    const account = await buildAccount({ email: 'user@contoso.example', password: 'ignored' })
+
+    expect(account?.authType).toBe('oauth2')
+    expect(account?.imap.host).toBe('outlook.office365.com')
   })
 
   it('uses an explicit SMTP server next to the discovered IMAP server', async () => {

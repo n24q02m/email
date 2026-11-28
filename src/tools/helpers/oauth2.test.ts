@@ -135,6 +135,17 @@ describe('isOutlookDomain', () => {
   it('is case-insensitive via domain extraction', () => {
     expect(isOutlookDomain('user@OUTLOOK.COM')).toBe(true)
   })
+
+  it('detects regional Microsoft consumer domains', () => {
+    for (const domain of ['hotmail.fr', 'live.co.uk', 'outlook.de', 'hotmail.com.br', 'msn.com']) {
+      expect(isOutlookDomain(`user@${domain}`)).toBe(true)
+    }
+  })
+
+  it('rejects lookalikes of regional Microsoft domains', () => {
+    expect(isOutlookDomain('user@hotmail.fr.example')).toBe(false)
+    expect(isOutlookDomain('user@nothotmail.fr')).toBe(false)
+  })
 })
 
 // ============================================================================

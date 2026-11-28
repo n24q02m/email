@@ -326,7 +326,7 @@ and GHCR (`ghcr.io/n24q02m/email`).
 
 ## Outlook OAuth Device Code
 
-Outlook/Hotmail/Live accounts use OAuth2 device-code. Run `email auth outlook <address>` once. On first use:
+Outlook/Hotmail/Live accounts -- including regional domains such as `hotmail.fr`, `live.co.uk` or `outlook.de` -- use OAuth2 device-code. Run `email auth outlook <address>` once. On first use:
 
 1. The CLI prints a device code and a Microsoft login URL
 2. Open the URL in a browser and enter the code
@@ -359,7 +359,7 @@ To trust mise configuration automatically, set `trusted_config_paths` in the use
 | `OUTLOOK_EMAIL` | No | - | Workaround when Microsoft device-code response omits the email field |
 | `OUTLOOK_TENANT` | No | `consumers` (stdio/CLI), `common` (http device-code) | Microsoft directory to sign in against, used for **both** the device-code and the token-refresh endpoint. Set `common` for a work/school (Entra ID) mailbox, or a tenant GUID / verified domain to pin one directory |
 | `OUTLOOK_SCOPES` | No | `https://outlook.office.com/IMAP.AccessAsUser.All https://outlook.office.com/SMTP.Send offline_access` | Space-separated scope list. Narrow it (e.g. drop `SMTP.Send`) for a read-only deployment — a grant consented with fewer scopes cannot be refreshed against the full list |
-| `OUTLOOK_EXTRA_DOMAINS` | No | - | Comma-separated domains routed to OAuth in addition to `outlook.com`/`hotmail.com`/`live.com`. Needed for a Microsoft 365 mailbox on your own domain, which otherwise looks like a password account |
+| `OUTLOOK_EXTRA_DOMAINS` | No | - | Comma-separated domains routed to OAuth (and the Outlook IMAP/SMTP servers) in addition to `outlook.com`/`hotmail.com`/`live.com`/`msn.com` and their regional variants (`hotmail.fr`, `live.co.uk`, `outlook.de`, ...). Needed for a Microsoft 365 mailbox on your own domain, which otherwise looks like a password account |
 
 ### Account modes
 
